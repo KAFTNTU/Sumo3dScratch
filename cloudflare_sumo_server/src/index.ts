@@ -18,6 +18,7 @@ export default {
   },
 };
 
+// Типи
 type PID = "p1" | "p2";
 type Bot = { x:number; y:number; a:number; vx:number; vy:number; wa:number; l:number; r:number; };
 type InputMsg = { t:"input"; l:number; r:number; };
@@ -28,44 +29,43 @@ export class RoomDO {
   state: DurableObjectState;
   env: Env;
 
-  // Збереження сокетів
+  // Гравці
   wsByPid: Record<PID, WebSocket | null> = { p1: null, p2: null };
   pidByWs = new Map<WebSocket, PID>();
 
-  // Вхідні дані (керування)
+  // Вхідні дані
   inputs: Record<PID, { l:number; r:number }> = { p1:{l:0,r:0}, p2:{l:0,r:0} };
 
-  // Фізичні боти
-  // ВІДСТАНЬ 100: від -50 до 50
-  bots: Record<PID, Bot> = {
-    p1:{x:-50,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0},
-    p2:{x: 50,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0},
-  };
+  // Фізика
+  bots: Record<PID, Bot>;
 
   tick = 0;
   loopStarted = false;
 
-  // ФАЗИ ГРИ
-  phase: "lobby" | "countdown" | "fight" | "end" = "lobby";
+  // ФАЗА
+  phase: "lobby" | "countdown" | "fight" | "end";
   fightStartTime: number = 0;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+
+    // === НАЛАШТУВАННЯ: ВІДСТАНЬ 300 пікселів ===
+    this.bots = {
+      p1:{x:-150,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0},
+      p2:{x: 150,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0},
+    };
+
+    // === ХИТРІСТЬ: Одразу ставимо фазу "fight" для тестів ===
+    this.phase = "fight"; 
   }
 
   // --- Helpers ---
-  private connectedPids(): PID[] {
-    const res: PID[] = [];
-    if (this.wsByPid.p1) res.push("p1");
-    if (this.wsByPid.p2) res.push("p2");
-    return res;
-  }
-
-  private assignPid(): PID | null {
-    if (!this.wsByPid.p1) return "p1";
-    if (!this.wsByPid.p2) return "p2";
-    return null;
+  private visibleBots(){
+    return {
+      p1: { x: this.bots.p1.x, y: this.bots.p1.y, a: this.bots.p1.a },
+      p2: { x: this.bots.p2.x, y: this.bots.p2.y, a: this.bots.p2.a }
+    };
   }
 
   // --- WebSocket Logic ---
@@ -81,27 +81,20 @@ export class RoomDO {
 
     server.accept();
 
-    const pid = this.assignPid();
-    if (!pid){
-      server.close(1008, "room_full");
-      return new Response("Room full", { status: 429 });
-    }
+    // Спрощена логіка: займаємо p1, якщо вільно, інакше p2
+    let pid: PID = "p1";
+    if (this.wsByPid.p1) pid = "p2";
 
     this.wsByPid[pid] = server;
     this.pidByWs.set(server, pid);
 
-    // Привітання
+    // Привітання (одразу кажемо, що фаза fight)
     server.send(JSON.stringify({ 
       t:"hello", 
       pid, 
       bots:this.visibleBots(), 
       phase:this.phase 
     }));
-
-    // МУЛЬТИПЛЕЄР: Старт тільки коли є ОБИДВА гравці
-    if (this.wsByPid.p1 && this.wsByPid.p2 && this.phase === "lobby") {
-      this.startCountdown();
-    }
 
     server.addEventListener("message", (ev) => {
       try {
@@ -116,8 +109,9 @@ export class RoomDO {
           };
         }
         
-        if (data?.t === "restart" && this.phase === "end") {
-           this.resetGame();
+        // Рестарт
+        if (data?.t === "restart") {
+           this.resetBots();
         }
 
       } catch (e) {}
@@ -127,11 +121,6 @@ export class RoomDO {
       this.pidByWs.delete(server);
       if (this.wsByPid[pid] === server) {
         this.wsByPid[pid] = null;
-      }
-      
-      // Якщо хтось вийшов під час гри
-      if (this.phase !== "lobby") {
-        this.endFight("opponent_left");
       }
     });
 
@@ -145,7 +134,7 @@ export class RoomDO {
 
   // --- Game Loop ---
   async alarm() {
-    // ЕКОНОМІЯ: Якщо нікого немає - спимо
+    // Економія: спимо тільки якщо геть нікого немає
     if (!this.wsByPid.p1 && !this.wsByPid.p2) {
       this.loopStarted = false; 
       return; 
@@ -154,55 +143,37 @@ export class RoomDO {
     const dt = 1/30;
     this.tick++;
 
-    // Логіка таймера
-    if (this.phase === "countdown") {
-      if (Date.now() >= this.fightStartTime) {
-        this.beginFight();
-      }
-    }
-
-    // Застосування інпутів (тільки якщо бій)
+    // === ФІЗИКА ЗАВЖДИ ПРАЦЮЄ (без перевірки фази) ===
     for (const pid of ["p1","p2"] as const) {
       const b = this.bots[pid];
-      if (this.phase === "fight") {
-        const inp = this.inputs[pid];
-        b.l = inp.l; 
-        b.r = inp.r;
-      } else {
-        b.l = 0; b.r = 0;
-      }
+      const inp = this.inputs[pid];
+      b.l = inp.l; 
+      b.r = inp.r;
     }
 
-    // Фізика
     this.stepBot(this.bots.p1, dt);
     this.stepBot(this.bots.p2, dt);
     this.resolveCollision();
 
     // Переможець
-    let winner: PID | "draw" | null = null;
-    if (this.phase === "fight") {
-      winner = this.checkWinner();
-      if (winner) {
-        this.endFight(winner === "draw" ? "draw" : "win_" + winner);
-      }
+    let winner: PID | null = null;
+    const R = 400 - 22;
+    if (Math.hypot(this.bots.p1.x, this.bots.p1.y) > R) winner = "p2";
+    else if (Math.hypot(this.bots.p2.x, this.bots.p2.y) > R) winner = "p1";
+
+    if (winner) {
+        this.resetBots(); // Респавн при вильоті
     }
 
     // Broadcast (~10Hz)
     if (this.tick % 3 === 0) {
-      const msLeft = (this.phase === "countdown") 
-        ? Math.max(0, this.fightStartTime - Date.now()) 
-        : 0;
-
-      const payload = JSON.stringify({ 
+      this.broadcast(JSON.stringify({ 
         t:"state", 
-        tick:this.tick, 
         bots:this.visibleBots(), 
-        phase:this.phase,
-        winner: winner, 
-        msLeft 
-      });
-      
-      this.broadcast(payload);
+        phase:"fight", // Завжди кажемо клієнту, що бій йде
+        winner, 
+        msLeft: 0 
+      }));
     }
 
     await this.state.storage.setAlarm(Date.now() + 33);
@@ -210,70 +181,17 @@ export class RoomDO {
 
   // --- Methods ---
 
-  startCountdown() {
-    this.phase = "countdown";
-    this.fightStartTime = Date.now() + 3000;
-    this.resetBots();
-    this.broadcast(JSON.stringify({ t: "countdown", ms: 3000 }));
-  }
-
-  beginFight() {
-    this.phase = "fight";
-    this.broadcast(JSON.stringify({ t: "fight_start" }));
-  }
-
-  endFight(reason: string) {
-    if (reason === "opponent_left") {
-      this.phase = "lobby";
-      this.resetBots();
-    } else {
-      this.phase = "end";
-    }
-    
-    this.broadcast(JSON.stringify({ 
-      t: "game_over", 
-      reason,
-      winner: reason.startsWith("win_") ? reason.split("_")[1] : null
-    }));
-  }
-
-  resetGame() {
-    this.phase = "lobby";
-    this.resetBots();
-    if (this.wsByPid.p1 && this.wsByPid.p2) {
-      this.startCountdown();
-    } else {
-      this.broadcast(JSON.stringify({ t: "reset", phase: "lobby" }));
-    }
-  }
-
   resetBots(){
-    // Скидаємо на позиції -50 та 50
-    this.bots.p1 = {x:-50,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0};
-    this.bots.p2 = {x: 50,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0};
+    // Скидаємо на позиції -150 та 150
+    this.bots.p1 = {x:-150,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0};
+    this.bots.p2 = {x: 150,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0};
     this.inputs.p1 = {l:0,r:0}; 
     this.inputs.p2 = {l:0,r:0};
   }
 
   broadcast(msg: string){
-    const pids = this.connectedPids();
-    for (const pid of pids){
-      const ws = this.wsByPid[pid];
-      if (ws) ws.send(msg);
-    }
-  }
-
-  visibleBots(){
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res: any = {};
-    const pids = this.connectedPids();
-    for (const pid of pids){
-      res[pid] = this.bots[pid];
-    }
-    return {
-      p1: { x: this.bots.p1.x, y: this.bots.p1.y, a: this.bots.p1.a },
-      p2: { x: this.bots.p2.x, y: this.bots.p2.y, a: this.bots.p2.a }
-    };
+    if (this.wsByPid.p1) this.wsByPid.p1.send(msg);
+    if (this.wsByPid.p2) this.wsByPid.p2.send(msg);
   }
 
   stepBot(b: Bot, dt: number) {
@@ -296,30 +214,16 @@ export class RoomDO {
 
   resolveCollision() {
     const b1=this.bots.p1, b2=this.bots.p2;
-    const r=22; 
-    const minD=r*2;
+    const minDist = 44; // 22 + 22
     const dx=b2.x-b1.x, dy=b2.y-b1.y;
     const d=Math.hypot(dx,dy) || 0.001;
     
-    if (d<minD){
-      const push=(minD-d)*0.5;
+    if (d<minDist){
+      const push=(minDist-d)*0.5;
       const nx=dx/d, ny=dy/d;
       b1.x -= nx*push; b1.y -= ny*push;
       b2.x += nx*push; b2.y += ny*push;
     }
-  }
-
-  checkWinner(): PID | "draw" | null {
-    const R = 400;
-    const r = 22;
-    const d1 = Math.hypot(this.bots.p1.x, this.bots.p1.y);
-    const d2 = Math.hypot(this.bots.p2.x, this.bots.p2.y);
-    const out1 = d1 > (R - r);
-    const out2 = d2 > (R - r);
-    if (out1 && !out2) return "p2";
-    if (out2 && !out1) return "p1";
-    if (out1 && out2) return "draw";
-    return null;
   }
 }
 
