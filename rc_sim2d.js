@@ -2,114 +2,82 @@
 (function(){
   'use strict';
 
-// === ONLINE HYBRID GLOBALS (V3 - STABLE) ===
-window.isOnline = false;
+// === ONLINE HYBRID GLOBALS (РОЗУМНА ВЕРСІЯ) ===
+window.isOnline = false; 
 window.serverWs = null;
 window.onlineState = "offline";
-window.myPID = null;
-window.serverBotData = { x: 0, y: 0, a: 0 };
-window.enemyBotData  = { x: 0, y: 0, a: 0 };
-window._pidLogTimer = null;
 
-// Шукач інстансу симулятора (на випадок різних назв)
-window.getRCSim = function(){
-  return (window.RCSim2D_get && window.RCSim2D_get()) ||
-         window.rcSim2D ||
-         window.sim ||
-         window.RCSim2D ||
-         null;
-};
+// ХТО Я? (Сервер скаже: "p1" або "p2")
+window.myPID = null; 
 
-window.connectToSumo = function(){
-  console.log("Connecting...");
+// КООРДИНАТИ
+window.serverBotData = { x: 0, y: 0, a: 0 }; // Я (Моя машинка)
+window.enemyBotData = { x: 0, y: 0, a: 0 };  // ВОРОГ (Суперник)
 
-  // Закриваємо старий сокет перед новим конектом (щоб не було 2-х підключень)
-  try{
-    if (window.serverWs && window.serverWs.readyState <= 1) window.serverWs.close();
-  }catch(e){}
-  window.serverWs = null;
-
-  window.onlineState = "connecting";
-  if (window._pidLogTimer){ clearInterval(window._pidLogTimer); window._pidLogTimer = null; }
-
-  // Твоя адреса воркера (room=default, або заміниш потім)
-  window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
-
-  window.serverWs.onopen = () => {
-    window.isOnline = true;
-    // ще чекаємо hello, тому залишаємо connecting
+window.connectToSumo = function() {
+    console.log("Connecting...");
     window.onlineState = "connecting";
-    console.log("WS OPEN. Waiting for hello...");
-  };
+    
+    // Твоя адреса
+    window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
 
-  window.serverWs.onmessage = (e) => {
-    try{
-      const d = JSON.parse(e.data);
-
-      // 1) сервер каже, хто ти
-      if (d.t === "hello"){
-        window.myPID = d.pid; // "p1" або "p2"
+    window.serverWs.onopen = () => {
+        window.isOnline = true;
         window.onlineState = "online";
-        console.log("ROLE:", window.myPID);
+        console.log("ONLINE MODE ACTIVATED!"); 
+        alert("🟢 З'єднано! Чекаємо розподілу ролей...");
+    };
 
-        // Прив'язка сокета до симулятора (щоб RC.drive шли в цей WS)
-        try{
-          const sim = window.getRCSim();
-          if (sim){
-            sim.online = sim.online || {};
-            sim.online.ws = window.serverWs;
-            sim.online.pid = window.myPID;
-            sim.online.fightStarted = true;
-          }
-        }catch(_e){}
-      }
+    window.serverWs.onmessage = (e) => {
+        try {
+            const d = JSON.parse(e.data);
 
-      // 2) стейт з координатами
-      if (d.t === "state" && d.bots){
-        if (!window.myPID) return;
+            // 1. СЕРВЕР КАЖЕ, ХТО ТИ (Приходить одразу при вході)
+            if (d.t === "hello") {
+                window.myPID = d.pid; // "p1" або "p2"
+                console.log(`✅ ТВОЯ РОЛЬ: ${window.myPID}`);
+                alert(`Ти граєш за гравця: ${window.myPID.toUpperCase()}`);
+            }
 
-        const me = window.myPID;
-        const enemy = (me === "p1") ? "p2" : "p1";
+            // 2. ОТРИМУЄМО КООРДИНАТИ (Приходить постійно)
+            if (d.t === "state" && d.bots) {
+                // Якщо сервер ще не сказав, хто ми — ігноруємо
+                if (!window.myPID) return;
 
-        if (d.bots[me])    window.serverBotData = d.bots[me];
-        if (d.bots[enemy]) window.enemyBotData  = d.bots[enemy];
-      }
-    }catch(err){}
-  };
+                const me = window.myPID;                 
+                const enemy = (me === "p1") ? "p2" : "p1"; // Якщо я p1, то ворог p2
 
-  window.serverWs.onerror = () => {
-    window.isOnline = false;
-    window.onlineState = "offline";
-    window.serverWs = null;
-    if (window._pidLogTimer){ clearInterval(window._pidLogTimer); window._pidLogTimer = null; }
-  };
+                // Оновлюємо СЕБЕ (щоб їхати)
+                if (d.bots[me]) {
+                    window.serverBotData = d.bots[me];
+                }
 
-  window.serverWs.onclose = () => {
-    window.isOnline = false;
-    window.onlineState = "offline";
-    window.myPID = null;
-    window.serverWs = null;
+                // Оновлюємо ВОРОГА (щоб знати де він)
+                if (d.bots[enemy]) {
+                    window.enemyBotData = d.bots[enemy];
+                }
+            }
+        } catch(err){}
+    };
 
-    if (window._pidLogTimer){ clearInterval(window._pidLogTimer); window._pidLogTimer = null; }
+    window.serverWs.onerror = () => {
+        window.isOnline = false;
+        window.onlineState = "offline";
+    };
 
-    // Очищаємо симулятор
-    try{
-      const sim = window.getRCSim();
-      if (sim && sim.online){
-        sim.online.ws = null;
-        sim.online.pid = null;
-        sim.online.fightStarted = false;
-      }
-    }catch(_e){}
-    console.log("OFFLINE");
-  };
-
-  // Рідке логування (не спамить)
-  window._pidLogTimer = setInterval(() => {
-    if (window.isOnline && window.myPID){
-      console.log(`🆔 ROLE: [ ${String(window.myPID).toUpperCase()} ] | STATE: ${window.onlineState}`);
-    }
-  }, 25000);
+    window.serverWs.onclose = () => {
+        window.isOnline = false;
+        window.onlineState = "offline";
+        window.myPID = null;
+        console.log("OFFLINE MODE"); 
+        alert("🔴 OFFLINE. Зв'язок втрачено.");
+    };
+    setInterval(() => {
+        if (window.isOnline && window.myPID) {
+            // Пише в консоль раз на секунду
+            console.log(`🆔 Я ГРАЮ ЗА: [ ${window.myPID.toUpperCase()} ]`);
+        }
+    }, 1000);
 };
 
   // ========== Small utilities ==========
@@ -6157,7 +6125,6 @@ ${code}
     sendDrive(l,r){
       // If online mode is active, send to server; otherwise apply locally.
       if (this.online && this.online.ws && this.online.ws.readyState===1){
-        if (!this.online.fightStarted) { this.lastCmd = `L${Math.round(Number(l)||0)} R${Math.round(Number(r)||0)}`; return; }
         const msg = { t:'input', pid: this.online.pid || 'p1', l:Number(l)||0, r:Number(r)||0 };
         try { this.online.ws.send(JSON.stringify(msg)); } catch(e){}
         // also keep local command for UI
@@ -6268,10 +6235,21 @@ ${code}
     const d = JSON.parse(ev.data);
     if (d.t==='hello'){
       this.online.pid = d.pid;
-      this.online.fightStarted = false;
-      this.online.startPending = false;
+      this.online.phase = (typeof d.phase==='string') ? d.phase : (this.online.phase||'lobby');
+      this.online.fightStarted = (this.online.phase==='fight');
+      this.online.startPending = (this.online.phase==='countdown');
+      this.online.startPendingUntil = 0;
       if (d.bots){ this.applyOnlineState(d.bots); }
     }
+    if (d.t==='countdown'){
+      // Server-driven countdown (no control messages)
+      this.online.phase = 'countdown';
+      this.online.fightStarted = false;
+      this.online.startPending = true;
+      const ms = Number(d.ms || d.msLeft || 0) || 0;
+      this.online.startPendingUntil = Date.now() + Math.max(0, ms);
+    }
+
     if (d.t==='control'){
       if (d.op==='start'){
         if (d.phase==='fight'){
@@ -6295,6 +6273,7 @@ ${code}
       }
     }
     if (d.t==='state'){
+      if (typeof d.phase==='string'){ this.online.phase = d.phase; this.online.fightStarted = (d.phase==='fight'); this.online.startPending = (d.phase==='countdown'); if (this.online.startPending && typeof d.msLeft==='number') this.online.startPendingUntil = Date.now()+Math.max(0,d.msLeft); }
       if (d.bots){ this.applyOnlineState(d.bots); }
       this.sumoWinner = d.winner ? (d.winner===this.online.pid?'you':'opponent') : null;
     }
@@ -6617,7 +6596,15 @@ setDrive
           bot.x = bot.x + (window.serverBotData.x - bot.x) * t;
           bot.y = bot.y + (window.serverBotData.y - bot.y) * t;
           bot.a = window.serverBotData.a; 
-
+          
+          // 2. Відправка команд на сервер
+          if (window.serverWs && window.serverWs.readyState === 1) {
+             window.serverWs.send(JSON.stringify({ 
+                 t: "input", 
+                 l: bot.l || 0, 
+                 r: bot.r || 0 
+             }));
+          }
       } else {
           // ОФЛАЙН (якщо інтернету немає)
           bot.x += bot.vx * dt;
@@ -6632,13 +6619,6 @@ setDrive
        // Opponent physics (same differential drive)
        if (this.bot2){
          const b2 = this.bot2;
-         // ONLINE: позиція суперника тільки з сервера
-         if (window.isOnline && window.enemyBotData) {
-           const t = 0.5;
-           b2.x = b2.x + (window.enemyBotData.x - b2.x) * t;
-           b2.y = b2.y + (window.enemyBotData.y - b2.y) * t;
-           b2.a = window.enemyBotData.a;
-         } else {
          const maxV2 = b2.maxSpeed || maxV;
          const tvl2 = (b2.l/100) * maxV2;
          const tvr2 = (b2.r/100) * maxV2;
@@ -6748,8 +6728,6 @@ setDrive
           }
         }
       }
-         }
-
 
 // Collision with arena walls (simple)
       if (this.track.kind==='arena' && this.track.walls){
