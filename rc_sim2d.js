@@ -6617,16 +6617,7 @@ setDrive
           bot.x = bot.x + (window.serverBotData.x - bot.x) * t;
           bot.y = bot.y + (window.serverBotData.y - bot.y) * t;
           bot.a = window.serverBotData.a; 
-          
-          // 2. Відправка команд на сервер
-          if (window.serverWs && window.serverWs.readyState === 1) {
-             window.serverWs.send(JSON.stringify({
-                 t: "input",
-                 pid: window.myPID || "p1",
-                 l: bot.l || 0,
-                 r: bot.r || 0
-             }));
-          }
+
       } else {
           // ОФЛАЙН (якщо інтернету немає)
           bot.x += bot.vx * dt;
@@ -6641,6 +6632,13 @@ setDrive
        // Opponent physics (same differential drive)
        if (this.bot2){
          const b2 = this.bot2;
+         // ONLINE: позиція суперника тільки з сервера
+         if (window.isOnline && window.enemyBotData) {
+           const t = 0.5;
+           b2.x = b2.x + (window.enemyBotData.x - b2.x) * t;
+           b2.y = b2.y + (window.enemyBotData.y - b2.y) * t;
+           b2.a = window.enemyBotData.a;
+         } else {
          const maxV2 = b2.maxSpeed || maxV;
          const tvl2 = (b2.l/100) * maxV2;
          const tvr2 = (b2.r/100) * maxV2;
@@ -6750,6 +6748,8 @@ setDrive
           }
         }
       }
+         }
+
 
 // Collision with arena walls (simple)
       if (this.track.kind==='arena' && this.track.walls){
