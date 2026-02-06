@@ -8,13 +8,17 @@ window.isOnline = false;
 window.serverWs = null;
 window.serverBotData = { x: 0, y: 0, a: 0 };
 
+
+window.onlineState = "offline";
 window.connectToSumo = function() {
     console.log("Connecting...");
+    window.onlineState = "connecting";
     // Твоя адреса воркера
     window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
 
-    window.serverWs.onopen = () => { 
-        window.isOnline = true; 
+    window.serverWs.onopen = () => {
+        window.isOnline = true;
+        window.onlineState = "online";
         console.log("ONLINE MODE ACTIVATED!"); 
         alert("🟢 ONLINE! Тепер фізика йде з сервера.");
     };
@@ -29,8 +33,14 @@ window.connectToSumo = function() {
         } catch(err){}
     };
 
-    window.serverWs.onclose = () => { 
-        window.isOnline = false; 
+    window.serverWs.onerror = () => {
+        window.isOnline = false;
+        window.onlineState = "offline";
+    };
+
+    window.serverWs.onclose = () => {
+        window.isOnline = false;
+        window.onlineState = "offline";
         console.log("OFFLINE MODE"); 
         alert("🔴 OFFLINE. Перехід на локальну фізику.");
     };
@@ -7280,103 +7290,94 @@ if (window.isOnline) {
     configureSensors: (cfg)=> Sim.setSensorsConfig(cfg),
     _sim: Sim,
   };
-// === КНОПКА ЗАПУСКУ (ВСТАВИТИ В ТОП-БАР SCRATCH) ===
-(function mountOnlineButtonInTopBar(){
-  function createBtn(){
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.innerText = "🔴 GO ONLINE";
+
+// === МІНІ-КНОПКА ОНЛАЙН (крапка біля "Сумо онлайн") ===
+(function mountOnlineDotNearSumoTab(){
+  function createDotBtn(){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rcsim2dOnlineDotBtn';
+    btn.className = 'rcsim2d-topBtn';
     btn.style.cssText = `
-      margin-left:10px;
-      padding:10px 14px;
-      border-radius:14px;
-      background:red;
-      color:white;
-      font-weight:800;
-      border:2px solid rgba(255,255,255,0.55);
-      cursor:pointer;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
-      white-space:nowrap;
+      margin-left:8px;
+      width:34px;
+      height:34px;
+      padding:0;
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     `;
 
-    function setState(){
-      if (window.isOnline) {
-        btn.style.background = "green";
-        btn.innerText = "🟢 ONLINE";
-      } else {
-        btn.style.background = "red";
-        btn.innerText = "🔴 GO ONLINE";
-      }
+    const dot = document.createElement('span');
+    dot.className = 'rcsim2d-onlineDot red';
+    btn.appendChild(dot);
+
+    function apply(){
+      const st = window.onlineState || (window.isOnline ? 'online' : 'offline');
+      dot.classList.remove('red','green','yellow');
+      if (st === 'online') dot.classList.add('green');
+      else if (st === 'connecting') dot.classList.add('yellow');
+      else dot.classList.add('red');
+
+      btn.title = (st === 'online') ? 'ONLINE (клік — вимкнути)' :
+                  (st === 'connecting') ? 'CONNECTING...' :
+                  'OFFLINE (клік — підключитись)';
     }
 
-    btn.onclick = function(){
-      if (!window.isOnline) {
-        window.connectToSumo();
-        // стан оновиться по onopen, але поставимо одразу “приблизно”
-        btn.style.background = "orange";
-        btn.innerText = "🟠 CONNECTING...";
+    btn.addEventListener('click', ()=>{
+      const st = window.onlineState || (window.isOnline ? 'online' : 'offline');
+      if (st !== 'online'){
+        // connect
+        try{
+          window.onlineState = 'connecting';
+          apply();
+          window.connectToSumo && window.connectToSumo();
+        }catch(e){
+          window.onlineState = 'offline';
+          apply();
+        }
       } else {
-        if (window.serverWs) window.serverWs.close();
-        setState();
+        // disconnect
+        try{
+          if (window.serverWs) window.serverWs.close();
+        }catch(e){}
+        window.onlineState = 'offline';
+        window.isOnline = false;
+        apply();
       }
-    };
+    });
 
-    // підстрахуємось: якщо ззовні закриється сокет — кнопка повернеться в OFFLINE
-    const _oldClose = window.connectToSumo;
-    // не чіпаємо connectToSumo, просто слухаємо статус через таймер
-    setInterval(setState, 500);
-
+    // keep color in sync
+    setInterval(apply, 300);
+    apply();
     return btn;
   }
 
-  function findTopBarRightSide(){
-    // 1) найпростіше: знайти контейнер з кнопкою "Назад"
-    const els = Array.from(document.querySelectorAll("button, a, div, span"));
-    const back = els.find(el => (el.innerText || "").trim() === "Назад");
-    if (back && back.parentElement) return back.parentElement;
-
-    // 2) fallback: знайти контейнер з багатьма кнопками (іконки зверху справа)
-    const btns = Array.from(document.querySelectorAll("button"));
-    // беремо батька, в якому є багато кнопок підряд
-    for (const b of btns) {
-      const p = b.parentElement;
-      if (!p) continue;
-      const count = p.querySelectorAll("button").length;
-      if (count >= 5) return p;
-    }
-    return null;
+  function findSumoTab(){
+    const els = Array.from(document.querySelectorAll('button,a,div,span'));
+    return els.find(el => (el.innerText || '').trim() === 'Сумо онлайн');
   }
 
   function tryMount(){
-    // якщо вже додали — нічого не робимо
-    if (document.getElementById("goOnlineBtn")) return true;
-
-    const host = findTopBarRightSide();
-    if (!host) return false;
-
-    const btn = createBtn();
-    btn.id = "goOnlineBtn";
-
-    // вставимо зліва від "Назад", якщо є
-    const children = Array.from(host.children);
-    const backEl = children.find(el => (el.innerText || "").trim() === "Назад");
-    if (backEl) backEl.insertAdjacentElement("beforebegin", btn);
-    else host.appendChild(btn);
-
+    if (document.getElementById('rcsim2dOnlineDotBtn')) return true;
+    const tab = findSumoTab();
+    if (!tab) return false;
+    const btn = createDotBtn();
+    tab.insertAdjacentElement('afterend', btn);
     return true;
   }
 
-  // UI може домальовуватись — тому пробуємо кілька разів
   let tries = 0;
-  const t = setInterval(() => {
+  const t = setInterval(()=>{
     tries++;
-    if (tryMount() || tries > 60) clearInterval(t);
+    if (tryMount() || tries > 80) clearInterval(t);
   }, 250);
 
-  // і додатково: якщо перерендер зносить кнопку — MutationObserver її поверне
-  const mo = new MutationObserver(() => {
-    if (!document.getElementById("goOnlineBtn")) tryMount();
+  const mo = new MutationObserver(()=>{
+    if (!document.getElementById('rcsim2dOnlineDotBtn')) tryMount();
   });
-  mo.observe(document.body, { childList: true, subtree: true });
+  mo.observe(document.body, { childList:true, subtree:true });
 })();
+
 })();
