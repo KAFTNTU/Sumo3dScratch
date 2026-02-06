@@ -36,9 +36,10 @@ export class RoomDO {
   inputs: Record<PID, { l:number; r:number }> = { p1:{l:0,r:0}, p2:{l:0,r:0} };
 
   // Фізичні боти
+  // ВІДСТАНЬ 100: від -50 до 50
   bots: Record<PID, Bot> = {
-    p1:{x:-64,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0},
-    p2:{x: 64,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0},
+    p1:{x:-50,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0},
+    p2:{x: 50,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0},
   };
 
   tick = 0;
@@ -89,7 +90,7 @@ export class RoomDO {
     this.wsByPid[pid] = server;
     this.pidByWs.set(server, pid);
 
-    // Hello message
+    // Привітання
     server.send(JSON.stringify({ 
       t:"hello", 
       pid, 
@@ -97,7 +98,7 @@ export class RoomDO {
       phase:this.phase 
     }));
 
-    // АВТОСТАРТ: Якщо це був другий гравець
+    // МУЛЬТИПЛЕЄР: Старт тільки коли є ОБИДВА гравці
     if (this.wsByPid.p1 && this.wsByPid.p2 && this.phase === "lobby") {
       this.startCountdown();
     }
@@ -115,12 +116,11 @@ export class RoomDO {
           };
         }
         
-        // Рестарт (опціонально)
         if (data?.t === "restart" && this.phase === "end") {
            this.resetGame();
         }
 
-      } catch {}
+      } catch (e) {}
     });
 
     server.addEventListener("close", () => {
@@ -248,8 +248,9 @@ export class RoomDO {
   }
 
   resetBots(){
-    this.bots.p1 = {x:-64,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0};
-    this.bots.p2 = {x: 64,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0};
+    // Скидаємо на позиції -50 та 50
+    this.bots.p1 = {x:-50,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0};
+    this.bots.p2 = {x: 50,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0};
     this.inputs.p1 = {l:0,r:0}; 
     this.inputs.p2 = {l:0,r:0};
   }
@@ -269,7 +270,6 @@ export class RoomDO {
     for (const pid of pids){
       res[pid] = this.bots[pid];
     }
-    // Return full structure for client simplicity, or just connected
     return {
       p1: { x: this.bots.p1.x, y: this.bots.p1.y, a: this.bots.p1.a },
       p2: { x: this.bots.p2.x, y: this.bots.p2.y, a: this.bots.p2.a }
