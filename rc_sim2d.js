@@ -4681,8 +4681,8 @@
     arenaRadius: 400,
     ringWidth:  8,
     // Start distance between robot bodies = 2 robots (128px). Center distance = 128 + 64 = 192 => ±96.
-    start: { x: -32, y: 0, a: 0 },
-    start2:{ x:  32, y: 0, a: Math.PI },
+    start: { x: -100, y: 0, a: 0 },
+    start2:{ x:  100, y: 0, a: Math.PI },
     theme: { bg: '#0b1020' }
   };
 
