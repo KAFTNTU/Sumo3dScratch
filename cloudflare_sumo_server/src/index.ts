@@ -1,10 +1,9 @@
-// Sumo Bots Server - Safe Spawn Fix
-// Змінено стартові координати на +/- 100
-
 export default {
-  async fetch(req, env) {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
     if (url.pathname === "/health") return new Response("ok");
+
     if (url.pathname === "/ws") {
       if ((req.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
         return new Response("Expected websocket", { status: 426 });
@@ -14,285 +13,316 @@ export default {
       const stub = env.ROOMS.get(id);
       return stub.fetch(req);
     }
+
     return new Response("Not found", { status: 404 });
-  }
+  },
 };
 
-function clamp(v, a, b) { return Math.min(Math.max(v, a), b); }
-function asText(data) {
-  if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  return "";
-}
+type PID = "p1" | "p2";
+type Bot = { x:number; y:number; a:number; vx:number; vy:number; wa:number; l:number; r:number; };
+type InputMsg = { t:"input"; l:number; r:number; };
+
+function clamp(v:number,a:number,b:number){ return v<a?a:(v>b?b:v); }
 
 export class RoomDO {
-  constructor(state, env) {
+  state: DurableObjectState;
+  env: Env;
+
+  // Збереження сокетів
+  wsByPid: Record<PID, WebSocket | null> = { p1: null, p2: null };
+  pidByWs = new Map<WebSocket, PID>();
+
+  // Вхідні дані (керування)
+  inputs: Record<PID, { l:number; r:number }> = { p1:{l:0,r:0}, p2:{l:0,r:0} };
+
+  // Фізичні боти
+  bots: Record<PID, Bot> = {
+    p1:{x:-64,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0},
+    p2:{x: 64,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0},
+  };
+
+  tick = 0;
+  loopStarted = false;
+
+  // ФАЗИ ГРИ
+  phase: "lobby" | "countdown" | "fight" | "end" = "lobby";
+  fightStartTime: number = 0;
+
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
-    this.wsByPid = { p1: null, p2: null };
-    this.pidByWs = new Map();
-    this.inputs = { p1: { l: 0, r: 0 }, p2: { l: 0, r: 0 } };
-    
-    // ПОЧАТКОВІ КООРДИНАТИ (безпечні)
-    this.bots = {
-      p1: { x: -100, y: 0, a: 0, vx: 0, vy: 0, wa: 0, l: 0, r: 0 },
-      p2: { x: 100, y: 0, a: Math.PI, vx: 0, vy: 0, wa: 0, l: 0, r: 0 }
-    };
-    
-    this.tick = 0;
-    this.loopStarted = false;
-    this.phase = "lobby";
-    this.ready = { p1: false, p2: false };
-    this.startDeadline = null;
   }
 
-  connectedPids() {
-    const res = [];
+  // --- Helpers ---
+  private connectedPids(): PID[] {
+    const res: PID[] = [];
     if (this.wsByPid.p1) res.push("p1");
     if (this.wsByPid.p2) res.push("p2");
     return res;
   }
 
-  bothPlayersPresent() { return !!(this.wsByPid.p1 && this.wsByPid.p2); }
-
-  assignPid() {
+  private assignPid(): PID | null {
     if (!this.wsByPid.p1) return "p1";
     if (!this.wsByPid.p2) return "p2";
     return null;
   }
 
-  attachSocket(ws, pid) {
-    if (this.wsByPid[pid]) this.pidByWs.delete(this.wsByPid[pid]);
-    this.wsByPid[pid] = ws;
-    this.pidByWs.set(ws, pid);
-  }
-
-  detachSocket(ws) {
-    const pid = this.pidByWs.get(ws);
-    if (!pid) return;
-    this.pidByWs.delete(ws);
-    if (this.wsByPid[pid] === ws) this.wsByPid[pid] = null;
-  }
-
-  visibleBots() {
-    const res = {};
-    for (const pid of this.connectedPids()) res[pid] = this.bots[pid];
-    return res;
-  }
-
-  broadcast(obj) {
-    const payload = JSON.stringify(obj);
-    for (const pid of this.connectedPids()) {
-      const ws = this.wsByPid[pid];
-      if (ws) { try { ws.send(payload); } catch {} }
-    }
-  }
-
-  broadcastRaw(payload) {
-    for (const pid of this.connectedPids()) {
-      const ws = this.wsByPid[pid];
-      if (ws) { try { ws.send(payload); } catch {} }
-    }
-  }
-
-  sendLog(ws, msg) {
-    try { ws.send(JSON.stringify({ t: "debug_log", msg })); } catch {}
-  }
-
-  // СКИНДАННЯ ПОЗИЦІЙ ПЕРЕД БОЄМ
-  resetBots() {
-    // p1 зліва (-100), дивиться вправо (0)
-    this.bots.p1 = { x: -100, y: 0, a: 0, vx: 0, vy: 0, wa: 0, l: 0, r: 0 };
-    // p2 справа (100), дивиться вліво (PI)
-    this.bots.p2 = { x: 100, y: 0, a: Math.PI, vx: 0, vy: 0, wa: 0, l: 0, r: 0 };
-    
-    this.inputs.p1 = { l: 0, r: 0 };
-    this.inputs.p2 = { l: 0, r: 0 };
-  }
-
-  beginFight() {
-    if (!this.bothPlayersPresent()) return;
-    this.phase = "fight";
-    this.startDeadline = null;
-    this.ready = { p1: false, p2: false };
-    this.resetBots();
-    this.broadcast({ t: "control", op: "start", phase: "fight" });
-  }
-
-  endFight(reason) {
-    this.phase = "lobby";
-    this.startDeadline = null;
-    this.ready = { p1: false, p2: false };
-    this.resetBots();
-    this.broadcast({ t: "control", op: "stop", reason, phase: "lobby", ready: this.ready, msLeft: 0 });
-  }
-
-  async fetch(req) {
+  // --- WebSocket Logic ---
+  async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname !== "/ws") return new Response("Use /ws endpoint");
+    if (url.pathname !== "/ws") return new Response("ok");
 
     const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = (pair as any)[0] as WebSocket;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const server = (pair as any)[1] as WebSocket;
+
     server.accept();
 
     const pid = this.assignPid();
-    if (!pid) {
-      server.close(1008, "Room is full");
+    if (!pid){
+      server.close(1008, "room_full");
       return new Response("Room full", { status: 429 });
     }
 
-    this.attachSocket(server, pid);
+    this.wsByPid[pid] = server;
+    this.pidByWs.set(server, pid);
 
-    server.send(JSON.stringify({
-      t: "hello",
-      pid,
-      bots: this.visibleBots(),
-      tick: this.tick,
-      phase: this.phase,
-      ready: this.ready
+    // Hello message
+    server.send(JSON.stringify({ 
+      t:"hello", 
+      pid, 
+      bots:this.visibleBots(), 
+      phase:this.phase 
     }));
+
+    // АВТОСТАРТ: Якщо це був другий гравець
+    if (this.wsByPid.p1 && this.wsByPid.p2 && this.phase === "lobby") {
+      this.startCountdown();
+    }
 
     server.addEventListener("message", (ev) => {
       try {
-        const raw = asText(ev.data);
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        const who = this.pidByWs.get(server) || pid;
+        const data = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+        const who: PID = this.pidByWs.get(server) || pid;
 
         if (data?.t === "input") {
-          if (this.phase === "fight") {
-            this.inputs[who] = {
-              l: clamp(Number(data.l) || 0, -100, 100),
-              r: clamp(Number(data.r) || 0, -100, 100)
-            };
-          }
-          return;
+          const m = data as InputMsg;
+          this.inputs[who] = {
+            l: clamp(Number(m.l) || 0, -100, 100),
+            r: clamp(Number(m.r) || 0, -100, 100),
+          };
+        }
+        
+        // Рестарт (опціонально)
+        if (data?.t === "restart" && this.phase === "end") {
+           this.resetGame();
         }
 
-        if (data?.t === "control") {
-          // this.sendLog(server, `Processing control op: "${data.op}" from ${who}`);
-
-          if (data.op === "reset_room") {
-             this.wsByPid = { p1: null, p2: null };
-             this.pidByWs = new Map();
-             this.ready = { p1: false, p2: false };
-             this.phase = "lobby";
-             this.loopStarted = false;
-             this.startDeadline = null;
-             this.broadcast({ t: "debug_log", msg: "ROOM FORCE RESET" });
-             return;
-          }
-
-          if (data.op === "start") {
-            this.ready[who] = true;
-            // this.sendLog(server, `Set ready for ${who} to true.`);
-
-            if (!this.bothPlayersPresent()) {
-              // this.sendLog(server, "Waiting for opponent...");
-              this.broadcast({ t: "control", op: "start", phase: "waiting_opponent", ready: this.ready, msLeft: 0 });
-              return;
-            }
-
-            if (!this.startDeadline) this.startDeadline = Date.now() + 5000;
-
-            if (this.ready.p1 && this.ready.p2) {
-              // this.sendLog(server, "Both ready, starting fight!");
-              this.beginFight();
-            } else {
-              // this.sendLog(server, "Opponent not ready yet.");
-              this.broadcast({
-                t: "control", op: "start", phase: "pending", ready: this.ready, msLeft: Math.max(0, this.startDeadline - Date.now())
-              });
-            }
-            return;
-          }
-
-          if (data.op === "stop") {
-            this.endFight("manual");
-            return;
-          }
-        }
-      } catch (e) {
-        this.sendLog(server, `Error: ${e.message}`);
-      }
+      } catch {}
     });
 
     server.addEventListener("close", () => {
-      const leftPid = this.pidByWs.get(server) || pid;
-      this.detachSocket(server);
-      if (this.phase === "fight") {
+      this.pidByWs.delete(server);
+      if (this.wsByPid[pid] === server) {
+        this.wsByPid[pid] = null;
+      }
+      
+      // Якщо хтось вийшов під час гри
+      if (this.phase !== "lobby") {
         this.endFight("opponent_left");
-      } else {
-        if (leftPid) this.ready[leftPid] = false;
-        this.startDeadline = null;
-        this.broadcast({ t: "control", op: "stop", reason: "opponent_left", phase: "lobby", ready: this.ready, msLeft: 0 });
       }
     });
 
     if (!this.loopStarted) {
       this.loopStarted = true;
-      this.state.storage.setAlarm(Date.now() + 33);
+      await this.state.storage.setAlarm(Date.now() + 33);
     }
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  // --- Game Loop ---
   async alarm() {
+    // ЕКОНОМІЯ: Якщо нікого немає - спимо
+    if (!this.wsByPid.p1 && !this.wsByPid.p2) {
+      this.loopStarted = false; 
+      return; 
+    }
+
+    const dt = 1/30;
     this.tick++;
-    if (this.connectedPids().length === 0) { this.loopStarted = false; return; }
-    if (this.phase === "lobby" && this.startDeadline && Date.now() > this.startDeadline) { this.endFight("timeout"); }
 
-    for (const pid of ["p1", "p2"]) {
-        const b = this.bots[pid];
+    // Логіка таймера
+    if (this.phase === "countdown") {
+      if (Date.now() >= this.fightStartTime) {
+        this.beginFight();
+      }
+    }
+
+    // Застосування інпутів (тільки якщо бій)
+    for (const pid of ["p1","p2"] as const) {
+      const b = this.bots[pid];
+      if (this.phase === "fight") {
         const inp = this.inputs[pid];
-        b.l = inp.l; b.r = inp.r;
+        b.l = inp.l; 
+        b.r = inp.r;
+      } else {
+        b.l = 0; b.r = 0;
+      }
     }
 
+    // Фізика
+    this.stepBot(this.bots.p1, dt);
+    this.stepBot(this.bots.p2, dt);
+    this.resolveCollision();
+
+    // Переможець
+    let winner: PID | "draw" | null = null;
     if (this.phase === "fight") {
-      this.stepBot(this.bots.p1, 1/30);
-      this.stepBot(this.bots.p2, 1/30);
-      this.resolveCollision();
+      winner = this.checkWinner();
+      if (winner) {
+        this.endFight(winner === "draw" ? "draw" : "win_" + winner);
+      }
     }
 
-    const winner = this.phase === "fight" ? this.checkWinner() : null;
-    if (winner) this.endFight(`winner_${winner}`);
+    // Broadcast (~10Hz)
+    if (this.tick % 3 === 0) {
+      const msLeft = (this.phase === "countdown") 
+        ? Math.max(0, this.fightStartTime - Date.now()) 
+        : 0;
 
-    if (this.tick % 3 === 0) { 
-      this.broadcastRaw(JSON.stringify({
-        t: "state", tick: this.tick, bots: this.visibleBots(), winner,
-        phase: this.phase, ready: this.ready,
-        msLeft: this.startDeadline ? Math.max(0, this.startDeadline - Date.now()) : 0
-      }));
+      const payload = JSON.stringify({ 
+        t:"state", 
+        tick:this.tick, 
+        bots:this.visibleBots(), 
+        phase:this.phase,
+        winner: winner, 
+        msLeft 
+      });
+      
+      this.broadcast(payload);
     }
+
     await this.state.storage.setAlarm(Date.now() + 33);
   }
 
-  stepBot(b, dt) {
-    const maxSpeed = 240, wheelBase = 60;
-    const targVL = (b.l / 100) * maxSpeed, targVR = (b.r / 100) * maxSpeed;
-    const v = (targVL + targVR) * 0.5, w = (targVR - targVL) / wheelBase;
-    b.vx = Math.cos(b.a) * v; b.vy = Math.sin(b.a) * v; b.wa = w;
-    b.x += b.vx * dt; b.y += b.vy * dt; b.a += b.wa * dt;
+  // --- Methods ---
+
+  startCountdown() {
+    this.phase = "countdown";
+    this.fightStartTime = Date.now() + 3000;
+    this.resetBots();
+    this.broadcast(JSON.stringify({ t: "countdown", ms: 3000 }));
   }
 
-  resolveCollision() {
-    const b1 = this.bots.p1, b2 = this.bots.p2;
-    const dx = b2.x - b1.x, dy = b2.y - b1.y, d = Math.hypot(dx, dy) || 1e-6;
-    // Радіус колізії 44 = радіус робота (22) + радіус робота (22)
-    if (d < 44) {
-      const nx = dx / d, ny = dy / d, push = (44 - d) * 0.5;
-      b1.x -= nx * push; b1.y -= ny * push;
-      b2.x += nx * push; b2.y += ny * push;
+  beginFight() {
+    this.phase = "fight";
+    this.broadcast(JSON.stringify({ t: "fight_start" }));
+  }
+
+  endFight(reason: string) {
+    if (reason === "opponent_left") {
+      this.phase = "lobby";
+      this.resetBots();
+    } else {
+      this.phase = "end";
+    }
+    
+    this.broadcast(JSON.stringify({ 
+      t: "game_over", 
+      reason,
+      winner: reason.startsWith("win_") ? reason.split("_")[1] : null
+    }));
+  }
+
+  resetGame() {
+    this.phase = "lobby";
+    this.resetBots();
+    if (this.wsByPid.p1 && this.wsByPid.p2) {
+      this.startCountdown();
+    } else {
+      this.broadcast(JSON.stringify({ t: "reset", phase: "lobby" }));
     }
   }
 
-  checkWinner() {
-    // Радіус арени 400, радіус робота 22. Поріг вильоту = 400 - 22 = 378.
-    const d1 = Math.hypot(this.bots.p1.x, this.bots.p1.y), d2 = Math.hypot(this.bots.p2.x, this.bots.p2.y);
-    if (d1 > 378 && d2 <= 378) return "p2";
-    if (d2 > 378 && d1 <= 378) return "p1";
-    if (d1 > 378 && d2 > 378) return "draw";
+  resetBots(){
+    this.bots.p1 = {x:-64,y:0,a:0,       vx:0,vy:0,wa:0,l:0,r:0};
+    this.bots.p2 = {x: 64,y:0,a:Math.PI,vx:0,vy:0,wa:0,l:0,r:0};
+    this.inputs.p1 = {l:0,r:0}; 
+    this.inputs.p2 = {l:0,r:0};
+  }
+
+  broadcast(msg: string){
+    const pids = this.connectedPids();
+    for (const pid of pids){
+      const ws = this.wsByPid[pid];
+      if (ws) ws.send(msg);
+    }
+  }
+
+  visibleBots(){
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = {};
+    const pids = this.connectedPids();
+    for (const pid of pids){
+      res[pid] = this.bots[pid];
+    }
+    // Return full structure for client simplicity, or just connected
+    return {
+      p1: { x: this.bots.p1.x, y: this.bots.p1.y, a: this.bots.p1.a },
+      p2: { x: this.bots.p2.x, y: this.bots.p2.y, a: this.bots.p2.a }
+    };
+  }
+
+  stepBot(b: Bot, dt: number) {
+    const maxSpeed = 240;
+    const wheelBase = 60;
+    const targVL = (b.l/100) * maxSpeed;
+    const targVR = (b.r/100) * maxSpeed;
+    
+    const v = (targVL + targVR) * 0.5;
+    const w = (targVR - targVL) / wheelBase;
+
+    b.vx = Math.cos(b.a) * v;
+    b.vy = Math.sin(b.a) * v;
+    b.wa = w;
+
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.a += b.wa * dt;
+  }
+
+  resolveCollision() {
+    const b1=this.bots.p1, b2=this.bots.p2;
+    const r=22; 
+    const minD=r*2;
+    const dx=b2.x-b1.x, dy=b2.y-b1.y;
+    const d=Math.hypot(dx,dy) || 0.001;
+    
+    if (d<minD){
+      const push=(minD-d)*0.5;
+      const nx=dx/d, ny=dy/d;
+      b1.x -= nx*push; b1.y -= ny*push;
+      b2.x += nx*push; b2.y += ny*push;
+    }
+  }
+
+  checkWinner(): PID | "draw" | null {
+    const R = 400;
+    const r = 22;
+    const d1 = Math.hypot(this.bots.p1.x, this.bots.p1.y);
+    const d2 = Math.hypot(this.bots.p2.x, this.bots.p2.y);
+    const out1 = d1 > (R - r);
+    const out2 = d2 > (R - r);
+    if (out1 && !out2) return "p2";
+    if (out2 && !out1) return "p1";
+    if (out1 && out2) return "draw";
     return null;
   }
+}
+
+export interface Env {
+  ROOMS: DurableObjectNamespace;
 }
