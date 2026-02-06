@@ -1,34 +1,61 @@
-
 /* RoboScratch 2D Simulator (single-file) 1 */
 (function(){
   'use strict';
 
-// === ONLINE HYBRID GLOBALS (SIMPLE VERSION) ===
+// === ONLINE HYBRID GLOBALS (РОЗУМНА ВЕРСІЯ) ===
 window.isOnline = false; 
 window.serverWs = null;
-window.serverBotData = { x: 0, y: 0, a: 0 };
-
-
 window.onlineState = "offline";
+
+// ХТО Я? (Сервер скаже: "p1" або "p2")
+window.myPID = null; 
+
+// КООРДИНАТИ
+window.serverBotData = { x: 0, y: 0, a: 0 }; // Я (Моя машинка)
+window.enemyBotData = { x: 0, y: 0, a: 0 };  // ВОРОГ (Суперник)
+
 window.connectToSumo = function() {
     console.log("Connecting...");
     window.onlineState = "connecting";
-    // Твоя адреса воркера
+    
+    // Твоя адреса
     window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
 
     window.serverWs.onopen = () => {
         window.isOnline = true;
         window.onlineState = "online";
         console.log("ONLINE MODE ACTIVATED!"); 
-        alert("🟢 ONLINE! Тепер фізика йде з сервера.");
+        alert("🟢 З'єднано! Чекаємо розподілу ролей...");
     };
 
     window.serverWs.onmessage = (e) => {
         try {
             const d = JSON.parse(e.data);
-            if (d.t === "state" && d.bots && d.bots.p1) {
-                // Оновлюємо глобальні дані
-                window.serverBotData = d.bots.p1;
+
+            // 1. СЕРВЕР КАЖЕ, ХТО ТИ (Приходить одразу при вході)
+            if (d.t === "hello") {
+                window.myPID = d.pid; // "p1" або "p2"
+                console.log(`✅ ТВОЯ РОЛЬ: ${window.myPID}`);
+                alert(`Ти граєш за гравця: ${window.myPID.toUpperCase()}`);
+            }
+
+            // 2. ОТРИМУЄМО КООРДИНАТИ (Приходить постійно)
+            if (d.t === "state" && d.bots) {
+                // Якщо сервер ще не сказав, хто ми — ігноруємо
+                if (!window.myPID) return;
+
+                const me = window.myPID;                 
+                const enemy = (me === "p1") ? "p2" : "p1"; // Якщо я p1, то ворог p2
+
+                // Оновлюємо СЕБЕ (щоб їхати)
+                if (d.bots[me]) {
+                    window.serverBotData = d.bots[me];
+                }
+
+                // Оновлюємо ВОРОГА (щоб знати де він)
+                if (d.bots[enemy]) {
+                    window.enemyBotData = d.bots[enemy];
+                }
             }
         } catch(err){}
     };
@@ -41,10 +68,19 @@ window.connectToSumo = function() {
     window.serverWs.onclose = () => {
         window.isOnline = false;
         window.onlineState = "offline";
+        window.myPID = null;
         console.log("OFFLINE MODE"); 
-        alert("🔴 OFFLINE. Перехід на локальну фізику.");
+        alert("🔴 OFFLINE. Зв'язок втрачено.");
     };
+    setInterval(() => {
+        if (window.isOnline && window.myPID) {
+            // Пише в консоль раз на секунду
+            console.log(`🆔 Я ГРАЮ ЗА: [ ${window.myPID.toUpperCase()} ]`);
+        }
+    }, 1000);
 };
+
+  // ========== Small utilities ==========
 
   // ========== Small utilities ==========
   const clamp = (v,a,b)=> (v<a?a:(v>b?b:v));
