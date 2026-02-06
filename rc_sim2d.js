@@ -3,6 +3,39 @@
 (function(){
   'use strict';
 
+// === ONLINE HYBRID GLOBALS (SIMPLE VERSION) ===
+window.isOnline = false; 
+window.serverWs = null;
+window.serverBotData = { x: 0, y: 0, a: 0 };
+
+window.connectToSumo = function() {
+    console.log("Connecting...");
+    // Твоя адреса воркера
+    window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
+
+    window.serverWs.onopen = () => { 
+        window.isOnline = true; 
+        console.log("ONLINE MODE ACTIVATED!"); 
+        alert("🟢 ONLINE! Тепер фізика йде з сервера.");
+    };
+
+    window.serverWs.onmessage = (e) => {
+        try {
+            const d = JSON.parse(e.data);
+            if (d.t === "state" && d.bots && d.bots.p1) {
+                // Оновлюємо глобальні дані
+                window.serverBotData = d.bots.p1;
+            }
+        } catch(err){}
+    };
+
+    window.serverWs.onclose = () => { 
+        window.isOnline = false; 
+        console.log("OFFLINE MODE"); 
+        alert("🔴 OFFLINE. Перехід на локальну фізику.");
+    };
+};
+
   // ========== Small utilities ==========
   const clamp = (v,a,b)=> (v<a?a:(v>b?b:v));
   const lerp = (a,b,t)=> a + (b-a)*t;
@@ -6499,10 +6532,24 @@ setDrive
       bot.wa = lerp(bot.wa, w, clamp(dt*5.0,0,1));
 
       // Position update
-      bot.x += bot.vx * dt;
-      bot.y += bot.vy * dt;
-      bot.a += bot.wa * dt;
+// === ГІБРИДНА ФІЗИКА ===
+if (window.isOnline) {
+    // ОНЛАЙН: Беремо координати з сервера
+    bot.x = window.serverBotData.x;
+    bot.y = window.serverBotData.y;
+    bot.a = window.serverBotData.a;
 
+    // Відправляємо інпут на сервер
+    if (window.serverWs && window.serverWs.readyState === 1) {
+        // Відправляємо поточні l/r (швидкість моторів)
+        window.serverWs.send(JSON.stringify({ t: "input", l: bot.l, r: bot.r }));
+    }
+} else {
+    // ОФЛАЙН: Стара фізика (не чіпаємо)
+    bot.x += bot.vx * dt;
+    bot.y += bot.vy * dt;
+    bot.a += bot.wa * dt;
+}
       // Wheels rotation for visuals
       bot.wheelRotL += targVL * dt * 0.03;
       bot.wheelRotR += targVR * dt * 0.03;
@@ -7233,4 +7280,23 @@ setDrive
     configureSensors: (cfg)=> Sim.setSensorsConfig(cfg),
     _sim: Sim,
   };
+// === КНОПКА ЗАПУСКУ ===
+setTimeout(() => {
+    const btn = document.createElement("button");
+    btn.innerText = "🔴 GO ONLINE";
+    btn.style = "position:fixed; top:10px; right:10px; z-index:99999; padding:15px; background:red; color:white; font-weight:bold; border:2px solid white; cursor:pointer;";
+    btn.onclick = function() {
+        if (!window.isOnline) {
+            window.connectToSumo();
+            btn.style.background = "green";
+            btn.innerText = "🟢 ONLINE";
+        } else {
+            if(window.serverWs) window.serverWs.close();
+            btn.style.background = "red";
+            btn.innerText = "🔴 GO ONLINE";
+        }
+    };
+    document.body.appendChild(btn);
+}, 1000);
+
 })();
