@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RoboControl Modular V12.0 Full</title>
+    <link rel="icon" href="data:,">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- CORE BLOCKLY -->
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <script src="https://unpkg.com/blockly/javascript_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/msg/uk.js"></script>
+
+    <style>
+        /* --- GLOBAL STYLES --- */
+        body {
+            overscroll-behavior: none;
+            touch-action: none;
+            user-select: none;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: #0f172a;
+            color: white;
+            overflow: hidden; 
+        }
+        
+        .glass-header {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+
+        
+        /* --- SCRATCH MODE (hide global header, maximize workspace) --- */
+        body.scratch-mode header.glass-header { display: none !important; }
+        body.scratch-mode main { padding-top: 0 !important; }
+        body.scratch-mode .sensor-row { top: 10px !important; }
+/* --- JOYSTICK --- */
+        #joystick-container { 
+            position: relative; 
+            width: 280px; 
+            height: 280px; 
+            margin: 0 auto 5vh auto; 
+        }
+        #joystick-base {
+            width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 70%);
+            border: 2px solid rgba(59, 130, 246, 0.3);
+            border-radius: 50%;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(0, 0, 0, 0.8);
+            position: relative;
+        }
+        #joystick-stick {
+            position: absolute; width: 90px; height: 90px;
+            background: radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8);
+            border-radius: 50%;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+            cursor: grab; z-index: 10;
+            transition: transform 0.1s, background 0.2s, box-shadow 0.2s;
+        }
+        #joystick-stick.snap-back { transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #joystick-stick::after {
+            content: ''; position: absolute; top: 20px; left: 20px; width: 25px; height: 25px;
+            background: rgba(255,255,255,0.2); border-radius: 50%;
+        }
+        #joystick-stick.braking {
+            background: radial-gradient(circle at 30% 30%, #ef4444, #b91c1c);
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+        }
+
+        .lock-btn { transition: all 0.3s; }
+        .gyro-active { background-color: #8b5cf6 !important; box-shadow: 0 0 15px #8b5cf6; color: white !important; border-color: #8b5cf6 !important; animation: pulse-purple 2s infinite; }
+        @keyframes pulse-purple {
+            0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+        }
+
+        /* --- SPEED SLIDER --- */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
+
+        /* --- QUAD JOYSTICK --- */
+        .joy-quad-wrapper { display: flex; flex-direction: column; gap: 30px; align-items: center; }
+        .joy-quad-label { font-size: 14px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; text-align: center; }
+        
+        .joy-quad-container { width: 140px; height: 140px; position: relative; }
+        
+        .joy-quad-base { 
+            width: 100%; height: 100%; 
+            background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 20px; 
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8); 
+            position: relative; touch-action: none; 
+        }
+        
+        .joy-quad-stick { position: absolute; width: 56px; height: 56px; background: radial-gradient(circle at 30% 30%, #a855f7, #7e22ce); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 10; pointer-events: none; }
+        .joy-quad-stick.snap { transition: transform 0.2s; }
+
+        /* --- BLOCKLY --- */
+        #blocklyDiv { 
+            position: absolute; 
+            top: 64px; 
+            left: 0; 
+            right: 0; 
+            bottom: 0px; 
+            background-color: #0f172a !important; 
+            z-index: 1;
+        }
+        
+        .blocklySvg { background-color: transparent !important; }
+        
+        /* Fixed Toolbox Styling to prevent zooming issues */
+        .blocklyToolboxDiv { 
+            background-color: #1f2937 !important; 
+            border: 1px solid rgba(255, 255, 255, 0.15); 
+            position: absolute !important; 
+            bottom: 20px !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+            top: auto !important; 
+            height: 70px !important; 
+            width: fit-content !important; 
+            min-width: 300px; 
+            display: flex !important; 
+            flex-direction: row !important; 
+            align-items: center; 
+            justify-content: center; 
+            border-radius: 16px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6); 
+            z-index: 40; 
+            padding: 0 10px; 
+        }
+        .blocklyTreeRow { height: 48px !important; padding: 0 12px !important; margin: 0 4px !important; border-radius: 10px !important; cursor: pointer; display: flex; align-items: center; justify-content: center; border: 1px solid transparent; }
+        .blocklyTreeLabel { font-family: 'Segoe UI', sans-serif; font-weight: 700; font-size: 13px !important; color: white !important; }
+        .blocklyTreeSelected .blocklyTreeRow { background-color: #374151 !important; border: 1px solid #60a5fa !important;}
+        
+        .blocklyScrollbarHandle, .blocklyScrollbarBackground { display: none !important; pointer-events: none !important; opacity: 0 !important; }
+
+        /* --- INCOMPATIBLE BLOCK GLOW --- */
+        .blockly-error-glow > .blocklyPath {
+            stroke: #ef4444 !important;
+            stroke-width: 3px !important;
+            fill: #7f1d1d !important;
+            filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8));
+        }
+        .blockly-error-text {
+            fill: #fecaca !important;
+            font-weight: bold;
+        }
+
+        /* --- SENSOR DASHBOARD & BUTTONS --- */
+        .sensor-row {
+            position: absolute; 
+            top: 75px; 
+            left: 0;
+            width: 100%;
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            padding: 0 10px;
+            gap: 12px; 
+            z-index: 30;
+            pointer-events: none; 
+        }
+
+        .sensor-dashboard {
+            pointer-events: auto;
+            background: rgba(15, 23, 42, 0.95);
+            border-radius: 12px;
+            padding: 4px 12px;
+            display: flex; 
+            justify-content: center;
+            gap: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .sensor-item { display: flex; flex-direction: column; align-items: center; }
+        .sensor-label { font-size: 8px; color: #94a3b8; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
+        .sensor-value { font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #34d399; }
+
+        /* Top Buttons */
+        .top-btn {
+            pointer-events: auto;
+            width: 35px; height: 35px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s;
+            cursor: pointer;
+            color: white;
+            font-size: 14px;
+        }
+        .top-btn:active { transform: scale(0.9); }
+        
+        .btn-example { background: #f59e0b; }
+        .btn-run { background: #22c55e; }
+        .btn-run.running { background: #ef4444; animation: pulse-red 2s infinite; }
+        
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+        /* UI Elements */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block; transition: all 0.3s;}
+        .connected { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .nav-btn { color: #64748b; padding: 8px 12px; border-radius: 8px; transition: all 0.2s; position: relative; }
+        .nav-btn:hover { background: rgba(255,255,255,0.05); color: #94a3b8; }
+        .nav-btn.active { color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        
+        .log-line { font-family: 'Courier New', monospace; font-size: 11px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-tx { color: #60a5fa; } .log-rx { color: #34d399; } .log-err { color: #f87171; }
+
+        .key-hint { display: inline-block; padding: 2px 6px; background: #334155; border-radius: 4px; font-family: monospace; font-size: 10px; color: #94a3b8; border-bottom: 2px solid #1e293b; }
+        
+        .tune-check { display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
+        .toggle-checkbox { appearance: none; width: 40px; height: 20px; background: #334155; border-radius: 20px; position: relative; cursor: pointer; transition: 0.3s; }
+        .toggle-checkbox::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle-checkbox:checked { background: #3b82f6; }
+        .toggle-checkbox:checked::after { transform: translateX(20px); }
+        
+        .btn-check-label {
+            flex: 1; text-align: center; padding: 10px; background: #334155; 
+            border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s;
+            font-weight: bold; color: #94a3b8;
+        }
+        .btn-check-input:checked + .btn-check-label {
+            background: #2563eb; color: white; border-color: #60a5fa;
+        }
+        .btn-check-input { display: none; }
+    
+/* ====== Responsive toolbox layout ====== */
+body.layout-mobile .blocklyToolboxDiv{
+  bottom: 64px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  top: auto !important;
+  height: 70px !important;
+  width: fit-content !important;
+  display: flex !important;
+  flex-direction: row !important;
+}
+
+body.layout-desktop .blocklyToolboxDiv{
+  left: 14px !important;
+  top: 84px !important;
+  bottom: 84px !important;
+  transform: none !important;
+  width: 240px !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 10px !important;
+}
+
+body.layout-desktop .blocklyTreeRow{
+  justify-content: flex-start !important;
+  width: 100% !important;
+  margin: 4px 0 !important;
+}
+
+
+/* Make workspace fill to bottom on desktop, keep 64px space only on mobile */
+body.layout-desktop #blocklyDiv { bottom: 0px !important; }
+body.layout-mobile #blocklyDiv { bottom: 64px !important; }
+
+
+        /* builder top mini buttons */
+        .btn-exit { background: rgba(30, 41, 59, 0.75); }
+        .btn-exit:hover { background: rgba(51, 65, 85, 0.9); transform: translateY(-1px); }
+
+        .btn-hide-header { background: rgba(30, 41, 59, 0.75); }
+        .btn-hide-header:hover { background: rgba(51, 65, 85, 0.9); transform: translateY(-1px); }
+
+        .btn-bt-mini { background: rgba(37, 99, 235, 0.85); }
+        .btn-bt-mini:hover { background: rgba(59, 130, 246, 0.95); transform: translateY(-1px); }
+
+        .btn-log-mini { background: rgba(202, 138, 4, 0.85); }
+        .btn-log-mini:hover { background: rgba(234, 179, 8, 0.95); transform: translateY(-1px); }
+
+
+        /* Mobile top bar (sensor-row) polish */
+        body.layout-mobile .sensor-row {
+            left: 10px !important;
+            right: 10px !important;
+            width: auto !important;
+            border-radius: 18px !important;
+            backdrop-filter: blur(10px) !important;
+        
+            max-width: calc(100vw - 20px) !important;
+            box-sizing: border-box !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none; /* Firefox */
+
+        }
+        body.layout-mobile .sensor-row .top-btn {
+            width: 44px !important;
+            height: 44px !important;
+            border-radius: 14px !important;
+            /* Don't override button colors here — individual button classes set their own backgrounds */
+            border: 1px solid rgba(148,163,184,0.22) !important;
+            color: #e2e8f0 !important;
+        }
+        body.layout-mobile .sensor-row .top-btn:hover { transform: none !important; }
+        body.layout-mobile .sensor-row .top-btn:active { transform: translateY(1px) !important; }
+        .sensor-row::-webkit-scrollbar { display: none; } /* WebKit */
+
+        @media (max-width: 380px) {
+            .sensor-row { gap: 8px !important; padding: 8px 8px !important; }
+            .sensor-row .top-btn { width: 40px !important; height: 40px !important; border-radius: 12px !important; }
+        }
+
+
+        /* Keep RUN green, keep Step only in debug controls */
+        body.layout-mobile .sensor-row .btn-run { background: rgba(34,197,94,0.92) !important; border: 1px solid rgba(34,197,94,0.55) !important; }
+        body.layout-mobile .sensor-row .btn-run.running { background: rgba(239,68,68,0.92) !important; border: 1px solid rgba(239,68,68,0.55) !important; }
+
+        /* Hide extra debug buttons on mobile (keep only step) */
+        body.layout-mobile #rcDbgToggle,
+        body.layout-mobile #rcDbgPause { display: none !important; }
+
+
+        /* --- STEP (one-button debug) --- */
+        .btn-step {
+            background: rgba(34,197,94,0.18);
+            border: 1px solid rgba(34,197,94,0.35);
+        }
+        .btn-step:hover { background: rgba(34,197,94,0.26); }
+
+        /* Bottom "now executing" bar (builder only) */
+</style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- === HEADER === -->
+    <header class="h-16 glass-header flex items-center justify-between px-4 z-50 absolute top-0 w-full">
+        <div class="flex items-center gap-2">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest hidden sm:block">OFFLINE</span>
+        </div>
+        
+        <nav id="rcTopNav" class="flex items-center gap-1 bg-slate-800/50 p-1 rounded-xl border border-slate-700/50">
+            <button onclick="switchView('view-joystick', this)" class="nav-btn active" title="Пульт">
+                <i class="fa-solid fa-gamepad text-lg"></i>
+            </button>
+            <button onclick="switchView('view-builder', this)" class="nav-btn" title="Блоки">
+                <i class="fa-solid fa-puzzle-piece text-lg"></i>
+            </button>
+            <button onclick="startDualMode(this)" class="nav-btn text-purple-400 hover:text-purple-300" title="4 Джойстики">
+                <div class="grid grid-cols-2 gap-0.5" style="width: 18px; height: 18px;">
+                    <div class="bg-current rounded-full opacity-70"></div>
+                    <div class="bg-current rounded-full opacity-70"></div>
+                    <div class="bg-current rounded-full opacity-70"></div>
+                    <div class="bg-current rounded-full opacity-70"></div>
+                </div>
+            </button>
+            <div class="w-px h-6 bg-slate-700 mx-1"></div>
+            <button onclick="openPassModal()" class="nav-btn text-emerald-500/80 hover:text-emerald-400" title="Пароль">
+                <i class="fa-solid fa-lock text-lg"></i>
+            </button>
+            <button id="btnLog" onclick="toggleLogModal()" class="nav-btn text-yellow-500/80 hover:text-yellow-400 relative" title="Лог (Затисни 3с)">
+                <i class="fa-solid fa-book text-lg"></i>
+            </button>
+        </nav>
+        
+        <button id="btConnect" class="w-10 h-10 rounded-full bg-blue-600 active:bg-blue-700 hover:bg-blue-500 text-white shadow-lg flex items-center justify-center transition-all border border-blue-400/30">
+            <i class="fa-brands fa-bluetooth-b text-lg"></i>
+        </button>
+    </header>
+
+    <!-- === MAIN CONTENT === -->
+    <main class="flex-1 relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 pt-16">
+        
+        <!-- --- VIEW 1: JOYSTICK (MAIN) --- -->
+        <section id="view-joystick" class="absolute inset-0 flex flex-col items-center justify-center p-4 transition-opacity duration-300">
+            
+            <div id="joystick-container" class="mb-2">
+                <div id="joystick-base">
+                    <div id="joystick-stick" class="snap-back"></div>
+                </div>
+            </div>
+            
+            <div class="text-center mb-4 opacity-50 hidden md:block">
+                <span class="key-hint">W</span> <span class="key-hint">A</span> <span class="key-hint">S</span> <span class="key-hint">D</span> для руху
+            </div>
+
+            <div class="w-full max-w-xs flex flex-col gap-3 bg-slate-800/40 p-4 rounded-2xl border border-slate-700/30 backdrop-blur-sm">
+                
+                <div class="flex items-center justify-between gap-4">
+                    <div class="bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-center flex-1">
+                        <span class="text-[10px] text-green-500 font-bold mr-1">L</span>
+                        <span id="motorLDisplay" class="text-blue-400 font-mono font-bold">0</span>
+                    </div>
+                    
+                    <button id="gyroBtn" class="lock-btn w-10 h-10 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center shadow-md border border-slate-600 hover:bg-slate-600 active:scale-95" onclick="toggleGyro()" title="Гіроскоп (натисни щоб обнулити)">
+                        <i class="fa-solid fa-mobile-screen-button text-sm"></i>
+                    </button>
+
+                    <div class="bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-center flex-1">
+                        <span class="text-[10px] text-green-500 font-bold mr-1">R</span>
+                        <span id="motorRDisplay" class="text-blue-400 font-mono font-bold">0</span>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-white/5">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1 uppercase tracking-wide">
+                        <span>Потужність</span>
+                        <span id="speedVal">100%</span>
+                    </div>
+                    <input type="range" id="speedSlider" min="10" max="100" value="100" step="10">
+                </div>
+                
+                <button onclick="document.getElementById('tuningModal').classList.remove('hidden')" class="w-full py-2 mt-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-300 border border-slate-600 transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> Налаштування моторів
+                </button>
+
+                <div class="bg-black/40 px-3 py-1 rounded text-[10px] font-mono tracking-widest text-slate-400 border border-slate-800/50 text-center mt-2">
+                    HEX: <span id="joyHex" class="text-yellow-500 font-bold">00 00 00 00</span>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- --- VIEW 2: BUILDER (SCRATCH) --- -->
+        <section id="view-builder" class="absolute inset-0 flex flex-col hidden opacity-0 transition-opacity duration-300">
+            
+            <div class="sensor-row">
+                <button onclick="exitScratchMode()" class="top-btn btn-exit" title="Вийти з блоків">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <button onclick="document.getElementById('btConnect')?.click()" class="top-btn btn-bt-mini" title="Bluetooth">
+                    <i class="fa-brands fa-bluetooth-b"></i>
+                </button>
+
+                <button onclick="toggleLogModal()" class="top-btn btn-log-mini" title="Лог">
+                    <i class="fa-solid fa-book"></i>
+                </button>
+
+                <button id="globalRunBtn" onclick="toggleRunState()" class="top-btn btn-run" title="Старт / Стоп">
+                    <i id="runIcon" class="fa-solid fa-play"></i>
+                </button>
+
+                <button onclick="openExampleModal()" class="top-btn btn-example" title="Файли">
+                    <i class="fa-solid fa-folder-open"></i>
+                </button>
+
+                <button id="rcDbgStep" class="top-btn btn-step" title="Крок (перемотка)">
+                    <i class="fa-solid fa-forward-step"></i>
+                </button>
+            </div>
+<div id="blocklyDiv" class="flex-1 mt-0"></div>
+        </section>
+
+        <!-- --- VIEW 3: QUAD MODE --- -->
+        <section id="view-dual" class="absolute inset-0 hidden opacity-0 flex flex-col items-center justify-center bg-slate-950">
+             <div class="absolute top-0 w-full h-12 bg-slate-900/50 flex justify-between items-center px-6 border-b border-white/5 backdrop-blur-sm z-10">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 bg-purple-500 rounded-full"></span>
+                    <span class="text-xs text-purple-400 font-bold tracking-[0.2em] uppercase">4 Motor Control</span>
+                </div>
+            </div>
+
+            <div class="w-full h-full flex items-center justify-center gap-8 px-4 pt-10">
+                
+                <div class="joy-quad-wrapper">
+                    <div>
+                        <div class="joy-quad-label">M1</div>
+                        <div id="joy1-container" class="joy-quad-container">
+                            <div id="joy1-base" class="joy-quad-base">
+                                <div id="joy1-stick" class="joy-quad-stick snap"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="joy-quad-label">M3</div>
+                        <div id="joy3-container" class="joy-quad-container">
+                            <div id="joy3-base" class="joy-quad-base">
+                                <div id="joy3-stick" class="joy-quad-stick snap"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="joy-quad-wrapper">
+                    <div>
+                        <div class="joy-quad-label">M2</div>
+                        <div id="joy2-container" class="joy-quad-container">
+                            <div id="joy2-base" class="joy-quad-base">
+                                <div id="joy2-stick" class="joy-quad-stick snap"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="joy-quad-label">M4</div>
+                        <div id="joy4-container" class="joy-quad-container">
+                            <div id="joy4-base" class="joy-quad-base">
+                                <div id="joy4-stick" class="joy-quad-stick snap"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="absolute bottom-28 bg-black/80 px-6 py-2 rounded-full text-xs font-mono text-purple-400 border border-slate-700 shadow-lg z-20">
+                HEX: <span id="quadPacketHex">--</span>
+            </div>
+        </section>
+    </main>
+
+
+    <!-- === MODALS === -->
+
+    
+    <div id="exampleModal" class="fixed inset-0 bg-black/80 z-[70] hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-700 p-5 overflow-y-auto max-h-[90vh]">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <h3 class="text-lg font-black text-white flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-amber-500"></i> Файли
+                </h3>
+                <button onclick="document.getElementById('exampleModal').classList.add('hidden')" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white" title="Закрити">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="rounded-2xl border border-slate-700 bg-slate-800/40 p-4">
+                <div class="text-xs font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-file-code"></i> Мої файли (XML)
+                </div>
+
+                <div class="grid grid-cols-4 gap-2 mt-3">
+                    <button onclick="newProject()" class="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition-all flex flex-col items-center justify-center gap-2 group">
+                        <i class="fa-solid fa-trash text-red-400 text-xl group-hover:scale-110 transition-transform"></i>
+                        <div class="text-xs font-black text-slate-200">Новий</div>
+                    </button>
+                    <button onclick="saveMyFile()" class="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition-all flex flex-col items-center justify-center gap-2 group">
+                        <i class="fa-solid fa-download text-blue-400 text-xl group-hover:scale-110 transition-transform"></i>
+                        <div class="text-xs font-black text-slate-200">Зберегти</div>
+                    </button>
+                    <button onclick="document.getElementById('fileInputAppend').click()" class="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition-all flex flex-col items-center justify-center gap-2 group">
+                        <i class="fa-solid fa-plus text-yellow-400 text-xl group-hover:scale-110 transition-transform"></i>
+                        <div class="text-xs font-black text-slate-200">Додати</div>
+                    </button>
+                    <button onclick="document.getElementById('fileInputReplace').click()" class="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition-all flex flex-col items-center justify-center gap-2 group">
+                        <i class="fa-solid fa-folder-open text-green-400 text-xl group-hover:scale-110 transition-transform"></i>
+                        <div class="text-xs font-black text-slate-200">Відкрити</div>
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="document.getElementById('exampleModal').classList.add('hidden')" class="w-full mt-6 py-3 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold text-sm">
+                Закрити
+            </button>
+        </div>
+    </div>
+
+    <input type="file" id="fileInputReplace" accept=".xml" style="display: none" onchange="loadMyFile(this, false)">
+    <input type="file" id="fileInputAppend" accept=".xml" style="display: none" onchange="loadMyFile(this, true)">
+
+<div id="tuningModal" class="fixed inset-0 bg-black/90 z-[80] hidden flex items-center justify-center backdrop-blur-md p-4">
+        <div class="bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-700 p-5 overflow-y-auto max-h-[90vh]">
+            <h3 class="text-lg font-bold text-white mb-4 text-center">⚙️ Налаштування шасі</h3>
+            
+            <div class="space-y-4">
+                 <div class="bg-purple-900/20 p-3 rounded-xl border border-purple-500/30">
+                    <label class="tune-check bg-transparent border-0 p-0">
+                        <span class="text-sm text-purple-300 font-bold"><i class="fa-solid fa-shield-halved mr-2"></i>SLIP Протокол</span>
+                        <input type="checkbox" id="slipCheck" class="toggle-checkbox" onchange="saveTuning()">
+                    </label>
+                </div>
+
+                <div class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30">
+                    <label class="tune-check bg-transparent border-0 p-0">
+                        <span class="text-sm text-blue-300 font-bold"><i class="fa-solid fa-truck-monster mr-2"></i>Режим 4 моторів (4WD)</span>
+                        <input type="checkbox" id="fourWdCheck" class="toggle-checkbox" onchange="saveTuning()">
+                    </label>
+                </div>
+
+                <div class="bg-fuchsia-900/20 p-3 rounded-xl border border-fuchsia-500/30">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-sm text-fuchsia-300 font-bold"><i class="fa-solid fa-robot mr-2"></i>Режим робота</div>
+                            <div class="text-[11px] text-slate-400 mt-1">🚗 Машинка: 4 байти (мотор1..4) · 🕷️ Павук: 8 байт (H/V 1..4)</div>
+                        </div>
+                        <select id="robotModeSelect" class="bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-2 py-2" onchange="saveTuning();">
+                            <option value="car">🚗 Машинка</option>
+                            <option value="spider">🕷️ Павук</option>
+                        </select>
+                    </div>
+
+                    <div id="spiderTuningBox" class="mt-3 hidden">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">V_UP</div>
+                                <input type="range" id="spVup" min="0" max="180" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spVupVal">60</div>
+                            </div>
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">V_DOWN</div>
+                                <input type="range" id="spVdown" min="0" max="180" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spVdownVal">90</div>
+                            </div>
+
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">H_LEFT</div>
+                                <input type="range" id="spHleft" min="0" max="180" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spHleftVal">60</div>
+                            </div>
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">H_RIGHT</div>
+                                <input type="range" id="spHright" min="0" max="180" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spHrightVal">120</div>
+                            </div>
+
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">STEP AMP (°)</div>
+                                <input type="range" id="spAmp" min="0" max="30" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spAmpVal">15</div>
+                            </div>
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">DEADZONE</div>
+                                <input type="range" id="spDead" min="0" max="25" step="1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spDeadVal">8</div>
+                            </div>
+
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">BASE Hz</div>
+                                <input type="range" id="spBaseHz" min="0.1" max="2.5" step="0.1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spBaseHzVal">0.9</div>
+                            </div>
+                            <div class="bg-black/30 p-2 rounded-lg border border-white/5">
+                                <div class="text-[10px] text-slate-400 mb-1">K Hz</div>
+                                <input type="range" id="spKHz" min="0" max="4" step="0.1">
+                                <div class="text-[10px] text-blue-300 font-mono text-center" id="spKHzVal">1.6</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="space-y-2">
+                    <span class="text-xs text-slate-400 uppercase tracking-widest font-bold">Інверсія моторів</span>
+                    <div class="flex gap-2">
+                        <input type="checkbox" id="invLCheck" class="btn-check-input" onchange="saveTuning()">
+                        <label for="invLCheck" class="btn-check-label">L (Лівий)</label>
+                        
+                        <input type="checkbox" id="invRCheck" class="btn-check-input" onchange="saveTuning()">
+                        <label for="invRCheck" class="btn-check-label">R (Правий)</label>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <div class="flex justify-between text-xs text-slate-400 mb-2">
+                        <span>Ліво</span>
+                        <span class="font-bold text-white">ВІДХИЛЕННЯ (БАЛАНС)</span>
+                        <span>Право</span>
+                    </div>
+                    <input type="range" id="trimSlider" min="-50" max="50" value="0" step="1" oninput="updateTrimDisplay(this.value)">
+                    <div class="text-center text-xs text-blue-400 font-mono mt-1" id="trimValueDisplay" style="display:none">0</div>
+                </div>
+                
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <div class="flex justify-between text-xs text-slate-400 mb-2">
+                        <span>Плавний</span>
+                        <span class="font-bold text-white">ЧУТЛИВІСТЬ ПОВОРОТУ</span>
+                        <span>Різкий</span>
+                    </div>
+                    <input type="range" id="turnSensSlider" min="10" max="100" value="100" step="10" oninput="updateTrimDisplay(null)">
+                    <div class="text-center text-xs text-blue-400 font-mono mt-1" id="turnSensDisplay">100%</div>
+                </div>
+            </div>
+
+            <button onclick="document.getElementById('tuningModal').classList.add('hidden')" class="w-full mt-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg">Зберегти та закрити</button>
+        </div>
+    </div>
+
+    <div id="passModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center backdrop-blur-md p-4">
+        <div class="bg-slate-900 p-6 rounded-2xl w-full max-w-sm shadow-2xl border border-slate-700">
+            <h3 class="text-lg font-bold text-white mb-6 text-center tracking-wide">ДОСТУП</h3>
+            <input type="text" id="passInput" class="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-4 text-white focus:border-blue-500 outline-none text-center text-xl tracking-[0.5em] font-mono" placeholder="****">
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <button onclick="closePassModal()" class="py-3 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700">Скасувати</button>
+                <button onclick="sendPassword()" class="py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="logModal" class="fixed inset-0 bg-black/50 z-40 hidden flex items-end sm:items-center justify-center backdrop-blur-sm sm:p-4">
+        <div class="bg-slate-900 w-full sm:max-w-md h-2/3 sm:h-[500px] sm:rounded-2xl rounded-t-2xl shadow-2xl border border-slate-700 flex flex-col">
+            <div class="grid grid-cols-3 items-center p-4 border-b border-slate-800">
+                <h3 class="text-sm font-bold text-yellow-500 flex items-center gap-2 justify-self-start">
+                    <i class="fa-solid fa-book"></i> СИСТЕМНИЙ ЛОГ
+                </h3>
+
+                <div id="rcLogHeaderCenter" class="justify-self-center"></div>
+
+                <div class="flex gap-2 justify-self-end">
+                    <button onclick="clearLog()" class="text-slate-500 hover:text-white text-xs px-2" title="Очистити">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    <button onclick="toggleLogModal()" class="text-slate-500 hover:text-white text-lg" title="Закрити">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="logContainer" class="flex-1 overflow-y-auto p-4 space-y-1 bg-black/20 font-mono text-xs">
+                <div class="text-slate-500 italic">-- Журнал подій (буфер 1500 строк) --</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- XML Blocks -->
+    <xml id="toolbox" style="display: none">
+        <category name="🕷️ Павук" colour="#A855F7">
+             <block type="spider_center"></block>
+             <block type="spider_step">
+                 <field name="DIR">FWD</field>
+             </block>
+             <block type="spider_walk_while">
+                <field name="DIR">FWD</field>
+             </block>
+             <block type="spider_walk_time">
+                <field name="DIR">FWD</field>
+                <value name="SEC"><shadow type="math_number"><field name="NUM">2</field></shadow></value>
+             </block>
+             <block type="spider_turn_smooth">
+                <value name="ANGLE"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+             </block>
+             <block type="spider_leg_control">
+                 <value name="VAL"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+             </block>
+             <block type="spider_config">
+                 <value name="HEIGHT"><shadow type="math_number"><field name="NUM">40</field></shadow></value>
+                 <value name="SPEED"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+             </block>
+             <block type="spider_anim">
+                 <field name="ANIM">WAVE</field>
+             </block>
+             <block type="spider_joystick_ctrl"></block>
+             <block type="spider_stop"></block>
+        </category>
+
+        <category name="🚗 Рух" colour="#4C97FF">
+            <block type="start_hat"></block>
+            <block type="robot_move">
+                <value name="L"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+                <value name="R"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+            </block>
+            <block type="robot_move_soft">
+                <value name="TARGET"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+                <value name="SEC"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+            </block>
+            <block type="robot_turn_timed">
+                 <field name="DIR">LEFT</field>
+                 <value name="SEC"><shadow type="math_number"><field name="NUM">0.5</field></shadow></value>
+            </block>
+            <block type="robot_set_speed">
+                <value name="SPEED"><shadow type="math_number_limited"><field name="NUM">50</field></shadow></value>
+            </block>
+            <block type="robot_stop"></block>
+            <block type="move_4_motors">
+                <value name="M1"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+                <value name="M2"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+                <value name="M3"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+                <value name="M4"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+            </block>
+            <block type="motor_single">
+                <value name="SPEED"><shadow type="math_number_limited"><field name="NUM">100</field></shadow></value>
+            </block>
+            <block type="go_home"></block>
+            <block type="record_start"></block>
+            <block type="replay_track"></block>
+            <block type="wait_start"></block>
+            <block type="stop_at_start"></block>
+        </category>
+        
+        <category name="🧠 Логіка" colour="%{BKY_LOGIC_HUE}">
+            <block type="controls_if"></block>
+            <block type="controls_if">
+                <mutation else="1"></mutation>
+            </block>
+            <block type="logic_compare"></block>
+            <block type="logic_operation"></block>
+            <block type="logic_negate"></block>
+            <block type="logic_boolean"></block>
+            <block type="sensor_get"></block>
+            <block type="logic_edge_detect"></block>
+            <block type="logic_schmitt">
+                <value name="VAL"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+                <value name="LOW"><shadow type="math_number"><field name="NUM">30</field></shadow></value>
+                <value name="HIGH"><shadow type="math_number"><field name="NUM">70</field></shadow></value>
+            </block>
+        </category>
+        <category name="Цикли" colour="%{BKY_LOOPS_HUE}">
+            <block type="controls_repeat_ext"><value name="TIMES"><shadow type="math_number"><field name="NUM">4</field></shadow></value></block>
+            <block type="controls_whileUntil"></block>
+            <block type="controls_for">
+                <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+                <value name="TO"><shadow type="math_number"><field name="NUM">10</field></shadow></value>
+                <value name="BY"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+            </block>
+            <block type="replay_loop">
+                 <value name="TIMES"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+             </block>
+             <block type="count_laps">
+                 <value name="LAPS"><shadow type="math_number"><field name="NUM">3</field></shadow></value>
+             </block>
+        </category>
+        <category name="Математика" colour="%{BKY_MATH_HUE}">
+            <block type="math_number"></block>
+            <block type="math_arithmetic"></block>
+            <block type="math_single"></block>
+            <block type="math_random_int">
+                <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+                <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+            </block>
+            <block type="math_pid">
+                <value name="ERROR"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+                <value name="KP"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+                <value name="KI"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+                <value name="KD"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+            </block>
+            <block type="math_smooth"></block>
+        </category>
+        <category name="Контроль" colour="#FFBF00">
+            <block type="sensor_display"></block>
+            <block type="wait_until_sensor">
+                <field name="SENS">0</field>
+                <field name="OP">LT</field>
+                <value name="VAL"><shadow type="math_number"><field name="NUM">20</field></shadow></value>
+            </block>
+            <block type="wait_seconds"><value name="SECONDS"><shadow type="math_number"><field name="NUM">1</field></shadow></value></block>
+            <block type="timer_get"></block>
+            <block type="timer_reset"></block>
+        </category>
+        <category name="Змінні" colour="%{BKY_VARIABLES_HUE}" custom="VARIABLE"></category>
+    </xml>
+    
+    <!-- Load Block Definitions -->
+
+    <script>
+        // === 🎨 НАЛАШТУВАННЯ КОЛЬОРІВ ===
+        const THEME_CONFIG = {
+            menuBg: '#1f2937',      
+            menuText: '#ffffff',    
+            menuSelected: '#1f2937',
+            flyoutBg: '#1f2937',    
+            flyoutOpacity: 0.95     
+        };
+
+        // === GLOBAL STATE ===
+        let isConnected = false;
+        let device, characteristic;
+        let isGyroEnabled = false;
+        let activeView = 'view-joystick';
+        
+        let gyroCalibrated = false;
+        let gyroOffset = { x: 0, y: 0 };
+        
+        let currentL = 0;
+        let currentR = 0;
+        let speedMultiplier = 1.0; 
+        
+        let lastJoyX = 0;
+        let lastJoyY = 0;
+        
+        let tuning = {trim: 0, invertL: false, invertR: false, useSlip: true, use4Motors: false, turnSens: 100, robotMode: 'car', spider: { V_DOWN: 90, V_UP: 60, H_CENTER: 90, H_LEFT: 60, H_RIGHT: 120, stepAmpMax: 15, baseHz: 0.9, kHz: 1.6, deadzone: 8 } };
+        try {
+            const saved = localStorage.getItem('roboTuning_v9');
+            if(saved) tuning = { ...tuning, ...JSON.parse(saved) };
+        } catch(e) {}
+        
+        document.getElementById('trimSlider').value = tuning.trim;
+        document.getElementById('trimValueDisplay').innerText = tuning.trim > 0 ? `R+${tuning.trim}` : (tuning.trim < 0 ? `L${tuning.trim}` : '0');
+        document.getElementById('invLCheck').checked = tuning.invertL;
+        document.getElementById('invRCheck').checked = tuning.invertR;
+        document.getElementById('slipCheck').checked = tuning.useSlip;
+        document.getElementById('fourWdCheck').checked = tuning.use4Motors;
+        document.getElementById('turnSensSlider').value = tuning.turnSens;
+        document.getElementById('turnSensDisplay').innerText = tuning.turnSens + "%";
+
+        // Robot mode (car / spider)
+        const robotModeSelect = document.getElementById('robotModeSelect');
+        const spiderTuningBox = document.getElementById('spiderTuningBox');
+
+        function applyRobotModeUI() {
+            robotModeSelect.value = tuning.robotMode || 'car';
+            const isSpider = robotModeSelect.value === 'spider';
+            spiderTuningBox.classList.toggle('hidden', !isSpider);
+
+            // (optional) disable car-only toggles visually when spider is selected
+            document.getElementById('fourWdCheck').disabled = isSpider;
+            document.getElementById('invLCheck').disabled = isSpider;
+            document.getElementById('invRCheck').disabled = isSpider;
+        }
+
+        // Spider sliders
+        const spEls = {
+            V_UP:   { el: document.getElementById('spVup'),     out: document.getElementById('spVupVal') },
+            V_DOWN: { el: document.getElementById('spVdown'),   out: document.getElementById('spVdownVal') },
+            H_LEFT: { el: document.getElementById('spHleft'),   out: document.getElementById('spHleftVal') },
+            H_RIGHT:{ el: document.getElementById('spHright'),  out: document.getElementById('spHrightVal') },
+            stepAmpMax:{ el: document.getElementById('spAmp'),  out: document.getElementById('spAmpVal') },
+            deadzone:{ el: document.getElementById('spDead'),   out: document.getElementById('spDeadVal') },
+            baseHz:{ el: document.getElementById('spBaseHz'),   out: document.getElementById('spBaseHzVal') },
+            kHz:{ el: document.getElementById('spKHz'),         out: document.getElementById('spKHzVal') },
+        };
+
+        function syncSpiderUIFromTuning() {
+            tuning.spider = tuning.spider || {};
+            const s = tuning.spider;
+            s.V_UP = (s.V_UP ?? 60);
+            s.V_DOWN = (s.V_DOWN ?? 90);
+            s.H_LEFT = (s.H_LEFT ?? 60);
+            s.H_RIGHT = (s.H_RIGHT ?? 120);
+            s.H_CENTER = (s.H_CENTER ?? 90);
+            s.stepAmpMax = (s.stepAmpMax ?? 15);
+            s.deadzone = (s.deadzone ?? 8);
+            s.baseHz = (s.baseHz ?? 0.9);
+            s.kHz = (s.kHz ?? 1.6);
+
+            spEls.V_UP.el.value = s.V_UP; spEls.V_UP.out.innerText = s.V_UP;
+            spEls.V_DOWN.el.value = s.V_DOWN; spEls.V_DOWN.out.innerText = s.V_DOWN;
+            spEls.H_LEFT.el.value = s.H_LEFT; spEls.H_LEFT.out.innerText = s.H_LEFT;
+            spEls.H_RIGHT.el.value = s.H_RIGHT; spEls.H_RIGHT.out.innerText = s.H_RIGHT;
+            spEls.stepAmpMax.el.value = s.stepAmpMax; spEls.stepAmpMax.out.innerText = s.stepAmpMax;
+            spEls.deadzone.el.value = s.deadzone; spEls.deadzone.out.innerText = s.deadzone;
+            spEls.baseHz.el.value = s.baseHz; spEls.baseHz.out.innerText = s.baseHz;
+            spEls.kHz.el.value = s.kHz; spEls.kHz.out.innerText = s.kHz;
+        }
+
+        Object.values(spEls).forEach(({el, out}) => {
+            el.addEventListener('input', () => {
+                out.innerText = el.value;
+                saveTuning();
+            });
+        });
+
+        applyRobotModeUI();
+        syncSpiderUIFromTuning();
+
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const btnConnect = document.getElementById('btConnect');
+        const motorLDisplay = document.getElementById('motorLDisplay');
+        const motorRDisplay = document.getElementById('motorRDisplay');
+        const joyHex = document.getElementById('joyHex');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedVal = document.getElementById('speedVal');
+        const btnLog = document.getElementById('btnLog');
+
+        // LONG PRESS FOR LOG
+        let logPressTimer;
+        btnLog.addEventListener('mousedown', () => {
+            logPressTimer = setTimeout(() => {
+                document.getElementById('logModal').classList.remove('hidden');
+            }, 3000); 
+        });
+        btnLog.addEventListener('mouseup', () => clearTimeout(logPressTimer));
+        btnLog.addEventListener('touchstart', (e) => {
+            logPressTimer = setTimeout(() => {
+                document.getElementById('logModal').classList.remove('hidden');
+            }, 3000);
+        });
+        btnLog.addEventListener('touchend', () => clearTimeout(logPressTimer));
+
+        // LOGGING FUNCTIONS
+        function log(msg, type = 'info') {
+            const container = document.getElementById('logContainer');
+            if (container.childElementCount > 1500) {
+                container.removeChild(container.firstElementChild);
+            }
+            const el = document.createElement('div');
+            el.classList.add('log-line');
+            if(type === 'tx') el.classList.add('log-tx');
+            else if(type === 'rx') el.classList.add('log-rx');
+            else if(type === 'err') el.classList.add('log-err');
+            else el.classList.add('text-slate-400');
+            
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            el.innerHTML = `<span class="opacity-50 text-[9px] mr-2">${time}</span>${msg}`;
+            
+            container.appendChild(el);
+            container.scrollTop = container.scrollHeight;
+        }
+        function clearLog() { document.getElementById('logContainer').innerHTML = ''; }
+        function toggleLogModal() { document.getElementById('logModal').classList.toggle('hidden'); }
+
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            log(args.join(' '));
+        };
+
+        function updateTrimDisplay(val) {
+            if(val !== null) tuning.trim = parseInt(val);
+            tuning.turnSens = parseInt(document.getElementById('turnSensSlider').value);
+            
+            document.getElementById('trimValueDisplay').innerText = tuning.trim > 0 ? `R+${tuning.trim}` : (tuning.trim < 0 ? `L${tuning.trim}` : '0');
+            document.getElementById('turnSensDisplay').innerText = tuning.turnSens + "%";
+            saveTuning();
+        }
+
+        function saveTuning() {
+            tuning.trim = parseInt(document.getElementById('trimSlider').value);
+            tuning.invertL = document.getElementById('invLCheck').checked;
+            tuning.invertR = document.getElementById('invRCheck').checked;
+            tuning.useSlip = document.getElementById('slipCheck').checked;
+            tuning.use4Motors = document.getElementById('fourWdCheck').checked;
+            tuning.turnSens = parseInt(document.getElementById('turnSensSlider').value);
+            
+            tuning.robotMode = document.getElementById('robotModeSelect').value;
+            tuning.spider = tuning.spider || {};
+            tuning.spider.V_UP = parseInt(document.getElementById('spVup').value);
+            tuning.spider.V_DOWN = parseInt(document.getElementById('spVdown').value);
+            tuning.spider.H_LEFT = parseInt(document.getElementById('spHleft').value);
+            tuning.spider.H_RIGHT = parseInt(document.getElementById('spHright').value);
+            tuning.spider.H_CENTER = 90; // fixed center
+            tuning.spider.stepAmpMax = parseInt(document.getElementById('spAmp').value);
+            tuning.spider.deadzone = parseInt(document.getElementById('spDead').value);
+            tuning.spider.baseHz = parseFloat(document.getElementById('spBaseHz').value);
+            tuning.spider.kHz = parseFloat(document.getElementById('spKHz').value);
+
+            // keep UI in sync
+            if (typeof applyRobotModeUI === 'function') applyRobotModeUI();
+            if (typeof syncSpiderUIFromTuning === 'function') syncSpiderUIFromTuning();
+
+            localStorage.setItem('roboTuning_v9', JSON.stringify(tuning));
+        }
+
+        // 100ms control packet tick (car or spider)
+        let _spiderPhase = 0;
+
+        function computeSpiderFromJoystick(x, y) {
+            // x,y: -100..100
+            const s = tuning.spider || {};
+            const dead = s.deadzone ?? 8;
+
+            const mag = Math.min(100, Math.sqrt(x*x + y*y));
+            if (mag < dead) {
+                return {
+                    h: [s.H_CENTER ?? 90, s.H_CENTER ?? 90, s.H_CENTER ?? 90, s.H_CENTER ?? 90],
+                    v: [s.V_DOWN ?? 90, s.V_DOWN ?? 90, s.V_DOWN ?? 90, s.V_DOWN ?? 90],
+                    advance: false
+                };
+            }
+
+            // 4 sectors
+            let sector = 'UP';
+            if (Math.abs(y) >= Math.abs(x) && y > 0) sector = 'UP';
+            else if (Math.abs(y) >= Math.abs(x) && y < 0) sector = 'DOWN';
+            else if (Math.abs(x) > Math.abs(y) && x > 0) sector = 'RIGHT';
+            else if (Math.abs(x) > Math.abs(y) && x < 0) sector = 'LEFT';
+
+            const H_CENTER = s.H_CENTER ?? 90;
+            const H_LEFT = s.H_LEFT ?? 60;
+            const H_RIGHT = s.H_RIGHT ?? 120;
+
+            let Ht = H_CENTER;
+            if (sector === 'LEFT') Ht = H_LEFT;
+            if (sector === 'RIGHT') Ht = H_RIGHT;
+            if (sector === 'UP') Ht = H_CENTER;
+            if (sector === 'DOWN') Ht = H_CENTER;
+
+            const V_UP = s.V_UP ?? 60;
+            const V_DOWN = s.V_DOWN ?? 90;
+
+            const stepAmpMax = s.stepAmpMax ?? 15;
+            const stepAmp = (mag / 100) * stepAmpMax;
+
+            const dirSign = (sector === 'DOWN') ? -1 : 1;
+
+            // Gait: diagonal pairs A(1,3) and B(2,4)
+            const inA = _spiderPhase < 0.5;
+            const lifted = [inA, !inA, inA, !inA];
+
+            const h = [Ht, Ht, Ht, Ht].map((base, i) => {
+                const off = lifted[i] ? +stepAmp : -stepAmp;
+                return Math.max(0, Math.min(180, Math.round(base + dirSign * off)));
+            });
+
+            const v = [0,0,0,0].map((_, i) => lifted[i] ? V_UP : V_DOWN);
+
+            return { h, v, advance: true, mag };
+        }
+
+        setInterval(() => {
+            if (!isConnected) return;
+
+            // Single joystick view drives either car or spider depending on tuning.robotMode
+            if (activeView === 'view-joystick') {
+                if ((tuning.robotMode || 'car') === 'spider') {
+                    const x = lastJoyX;
+                    const y = lastJoyY;
+
+                    const dt = 0.1; // 100ms
+                    const mag = Math.min(100, Math.sqrt(x*x + y*y));
+                    const s = tuning.spider || {};
+                    const dead = s.deadzone ?? 8;
+
+                    // advance phase only when moving
+                    if (mag >= dead) {
+                        const baseHz = s.baseHz ?? 0.9;
+                        const kHz = s.kHz ?? 1.6;
+                        const hz = baseHz + (kHz * (mag / 100));
+                        _spiderPhase = (_spiderPhase + dt * hz) % 1;
+                    }
+
+                    const out = computeSpiderFromJoystick(x, y);
+                    sendSpiderPacket(out.h[0], out.v[0], out.h[1], out.v[1], out.h[2], out.v[2], out.h[3], out.v[3]);
+                } else {
+                    let m1 = currentL, m2 = currentR;
+                    let m3 = tuning.use4Motors ? currentL : 0;
+                    let m4 = tuning.use4Motors ? currentR : 0;
+                    sendDrivePacket(m1, m2, m3, m4);
+                }
+            }
+        }, 100);
+const SLIP_END = 0xC0;
+        const SLIP_ESC = 0xDB;
+        const SLIP_ESC_END = 0xDC;
+        const SLIP_ESC_ESC = 0xDD;
+
+        let rxBuffer = [];
+
+        function slipEncode(dataArray) {
+            let encoded = [];
+            encoded.push(SLIP_END);
+            for(let byte of dataArray) {
+                if(byte === SLIP_END) { encoded.push(SLIP_ESC, SLIP_ESC_END); }
+                else if(byte === SLIP_ESC) { encoded.push(SLIP_ESC, SLIP_ESC_ESC); }
+                else { encoded.push(byte); }
+            }
+            encoded.push(SLIP_END);
+            return new Uint8Array(encoded);
+        }
+
+        function processSlipData(byte) {
+            if (byte === SLIP_END) {
+                if (rxBuffer.length > 0) {
+                    handlePacket(rxBuffer);
+                    rxBuffer = [];
+                }
+            } else if (byte === SLIP_ESC) {
+                rxBuffer.push(byte); 
+            } else {
+                if (rxBuffer.length > 0 && rxBuffer[rxBuffer.length - 1] === SLIP_ESC) {
+                    rxBuffer.pop(); 
+                    if (byte === SLIP_ESC_END) rxBuffer.push(SLIP_END);
+                    else if (byte === SLIP_ESC_ESC) rxBuffer.push(SLIP_ESC);
+                    else {
+                        rxBuffer.push(byte);
+                        log("SLIP Error: Bad Escape", "err");
+                    }
+                } else {
+                    rxBuffer.push(byte);
+                }
+            }
+        }
+
+        function handlePacket(data) {
+            if (data.length >= 4) {
+                window.sensorData = data;
+                if(document.getElementById('valP1')) document.getElementById('valP1').innerText = data[0];
+                if(document.getElementById('valP2')) document.getElementById('valP2').innerText = data[1];
+                if(document.getElementById('valP3')) document.getElementById('valP3').innerText = data[2];
+                if(document.getElementById('valP4')) document.getElementById('valP4').innerText = data[3];
+            } else {
+                 let hexStr = data.map(b => b.toString(16).padStart(2,'0')).join(' ');
+                 const str = new TextDecoder().decode(new Uint8Array(data)).trim();
+                 log(`RX RAW: ${hexStr} / "${str}"`, 'rx');
+            }
+        }
+
+        window.motorState = { m1:0, m2:0, m3:0, m4:0 };
+
+        async function sendSpiderPacket(h1, v1, h2, v2, h3, v3, h4, v4) {
+             if (!isConnected) return;
+             const servos = [h1, v1, h2, v2, h3, v3, h4, v4].map(v => Math.max(0, Math.min(180, parseInt(v))));
+             const raw = new Uint8Array(servos);
+             
+             if (isConnected && characteristic) {
+                let finalPacket;
+                if (tuning.useSlip) {
+                    finalPacket = slipEncode(raw);
+                } else {
+                    finalPacket = raw;
+                }
+                try { await characteristic.writeValue(finalPacket); } catch(e) { log("TX Spider Fail: " + e.message, 'err'); }
+            }
+        }
+
+        async function sendDrivePacket(m1, m2, m3, m4) {
+            if (!isConnected && !window.isSimulating) return;
+            window.motorState = { m1, m2, m3, m4 };
+
+            if (window._isRecordingTrack) {
+                let now = new Date().getTime();
+                window._trackMemory.push({
+                    t: now,
+                    l: m1,
+                    r: m2,
+                    m3: m3,
+                    m4: m4
+                });
+            }
+
+            m1 = Math.max(-100, Math.min(100, parseInt(m1)));
+            m2 = Math.max(-100, Math.min(100, parseInt(m2)));
+            m3 = Math.max(-100, Math.min(100, parseInt(m3)));
+            m4 = Math.max(-100, Math.min(100, parseInt(m4)));
+            
+            const raw = new Int8Array([m1, m2, m3, m4]); 
+
+            if (isConnected && characteristic) {
+                let finalPacket;
+                if (tuning.useSlip) {
+                    const uintView = new Uint8Array(raw.buffer);
+                    finalPacket = slipEncode(uintView);
+                } else {
+                    finalPacket = raw;
+                }
+                try { await characteristic.writeValue(finalPacket); } catch(e) { log("TX Fail: " + e.message, 'err'); }
+            }
+        }
+
+        async function sendRawPacket(data) {
+             if (!isConnected || !characteristic) return;
+             let finalPacket = data;
+             if (tuning.useSlip) {
+                 finalPacket = slipEncode(new Uint8Array(data.buffer));
+             }
+             try { await characteristic.writeValue(finalPacket); } catch(e) {}
+        }
+
+        async function sendTextData(str) {
+            if (!isConnected || !characteristic) return;
+            const raw = new TextEncoder().encode(str + '\n');
+             let finalPacket = raw;
+             if (tuning.useSlip) {
+                 finalPacket = slipEncode(raw);
+             }
+            try { await characteristic.writeValue(finalPacket); log(`Cmd: ${str}`, 'tx'); } catch(e) { log(e, 'err'); }
+        }
+
+        btnConnect.addEventListener('click', async () => {
+            if(isConnected) { if(device) device.gatt.disconnect(); return; }
+            try {
+                log('Scanning...', 'info');
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [0xFFE0, "6e400001-b5a3-f393-e0a9-e50e24dcca9e"]
+                });
+                device.addEventListener('gattserverdisconnected', () => {
+                    isConnected = false; statusDot.classList.remove('connected'); statusText.innerText = "OFFLINE";
+                    btnConnect.classList.remove('bg-red-600'); btnConnect.classList.add('bg-blue-600');
+                    log('Disconnected', 'err');
+                });
+                const server = await device.gatt.connect();
+                let service;
+                try { service = await server.getPrimaryService(0xFFE0); characteristic = await service.getCharacteristic(0xFFE1); } 
+                catch(e) { service = await server.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e"); characteristic = await service.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e"); }
+
+                try {
+                    await characteristic.startNotifications();
+                    characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                        const rawData = new Uint8Array(e.target.value.buffer);
+                        
+                        if (tuning.useSlip) {
+                            for(let i=0; i<rawData.length; i++) {
+                                processSlipData(rawData[i]);
+                            }
+                        } else {
+                             handlePacket(Array.from(rawData));
+                        }
+                    });
+                } catch(e){}
+
+                isConnected = true; statusDot.classList.add('connected'); statusText.innerText = "ONLINE";
+                btnConnect.classList.remove('bg-blue-600'); btnConnect.classList.add('bg-red-600');
+                log('Connected!', 'info');
+            } catch(e) { log(e, 'err'); }
+        });
+
+        
+        // --- Scratch Mode: hide global header when in block editor ---
+        function toggleScratchMode(force) {
+            // force=true -> enable, force=false -> disable, force=undefined -> toggle
+            const enable = (force === undefined) ? !document.body.classList.contains('scratch-mode') : !!force;
+            document.body.classList.toggle('scratch-mode', enable);
+        }
+        function exitScratchMode() {
+            toggleScratchMode(false);
+            const btn = document.querySelector("button[onclick*=\"switchView('view-joystick'\"]");
+            switchView('view-joystick', btn || null);
+        }
+
+        function switchView(viewId, btnElement) {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+            
+            ['view-joystick', 'view-builder', 'view-dual'].forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.add('hidden');
+                el.classList.remove('opacity-100');
+                el.classList.add('opacity-0');
+            });
+            const target = document.getElementById(viewId);
+            target.classList.remove('hidden');
+            setTimeout(() => { target.classList.remove('opacity-0'); target.classList.add('opacity-100'); }, 10);
+            
+            activeView = viewId;
+            if(viewId !== 'view-joystick' && isGyroEnabled) toggleGyro();
+            if(viewId === 'view-builder' && typeof Blockly !== 'undefined') setTimeout(() => Blockly.svgResize(workspace), 100);
+            // auto: when entering blocks view, hide global header to free space
+            if(viewId === 'view-builder') toggleScratchMode(true);
+            else toggleScratchMode(false);
+        }
+        function startDualMode(btn) { switchView('view-dual', btn); }
+
+        function openPassModal() { document.getElementById('passModal').classList.remove('hidden'); }
+        function closePassModal() { document.getElementById('passModal').classList.add('hidden'); }
+        function sendPassword() {
+            const pass = document.getElementById('passInput').value;
+            if (pass) { sendTextData(`PASS:${pass}`); document.getElementById('passInput').value = ''; closePassModal(); }
+        }
+        function openExampleModal() { document.getElementById('exampleModal').classList.remove('hidden'); }
+
+        const stick = document.getElementById('joystick-stick');
+        const base = document.getElementById('joystick-base');
+        const gyroBtn = document.getElementById('gyroBtn');
+        let dragging = false;
+        let joyCenter = { x: 0, y: 0 };
+        const maxDist = 90;
+
+        speedSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            speedVal.innerText = val + '%';
+            speedMultiplier = val / 100;
+            updateTankLogic(lastJoyX, lastJoyY);
+        });
+
+        const keys = { w: false, a: false, s: false, d: false };
+        document.addEventListener('keydown', (e) => { if(activeView!=='view-joystick')return; const k=e.key.toLowerCase(); if(keys.hasOwnProperty(k)){keys[k]=true; updateKeyboardLogic();} });
+        document.addEventListener('keyup', (e) => { if(activeView!=='view-joystick')return; const k=e.key.toLowerCase(); if(keys.hasOwnProperty(k)){keys[k]=false; updateKeyboardLogic();} });
+        function updateKeyboardLogic() {
+            let x=0,y=0; if(keys.w)y=100; if(keys.s)y=-100; if(keys.a)x=-100; if(keys.d)x=100;
+            if(y!==0&&x!==0)x*=0.5; 
+            lastJoyX = x; lastJoyY = y;
+            updateTankLogic(x,y);
+        }
+
+        function toggleGyro() {
+            if (!window.DeviceOrientationEvent) { alert("Немає підтримки гіроскопа"); return; }
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(s => { if(s==='granted') activateGyro(); else alert("Відмовлено"); });
+            } else { activateGyro(); }
+        }
+        function activateGyro() {
+            isGyroEnabled = !isGyroEnabled;
+            if (isGyroEnabled) {
+                gyroBtn.classList.add('gyro-active'); 
+                gyroCalibrated = false; 
+                window.addEventListener('deviceorientation', handleGyro);
+            } else {
+                gyroBtn.classList.remove('gyro-active'); window.removeEventListener('deviceorientation', handleGyro); resetJoystick();
+            }
+        }
+        function handleGyro(e) {
+            if (!isGyroEnabled) return;
+            if (!gyroCalibrated) {
+                gyroOffset.x = e.gamma;
+                gyroOffset.y = e.beta;
+                gyroCalibrated = true;
+                return;
+            }
+
+            let x = e.gamma - gyroOffset.x;
+            let y = e.beta - gyroOffset.y;
+            
+            const maxTilt = 30;
+            if (x > maxTilt) x = maxTilt; if (x < -maxTilt) x = -maxTilt;
+            if (y > maxTilt) y = maxTilt; if (y < -maxTilt) y = -maxTilt;
+            
+            let valX = Math.round((x / maxTilt) * 100);
+            let valY = Math.round((y / maxTilt) * 100); 
+            
+            if (Math.abs(valX) < 10) valX = 0; if (Math.abs(valY) < 10) valY = 0;
+            valY = -valY;
+            
+            const moveX = (valX / 100) * maxDist;
+            const moveY = (-valY / 100) * maxDist;
+            stick.style.transform = `translate(-50%, -50%) translate(${moveX}px, ${moveY}px)`;
+            
+            lastJoyX = valX; lastJoyY = valY;
+            updateTankLogic(valX, valY);
+        }
+
+        function startJoy(e) { if(activeView!=='view-joystick'||isGyroEnabled)return; dragging=true; stick.classList.remove('snap-back'); const r=base.getBoundingClientRect(); joyCenter={x:r.left+r.width/2,y:r.top+r.height/2}; stick.classList.add('braking'); }
+        function endJoy() { if(activeView!=='view-joystick'||isGyroEnabled)return; dragging=false; if(navigator.vibrate)navigator.vibrate(5); stick.classList.remove('braking'); resetJoystick(); }
+        function resetJoystick() { 
+            stick.classList.add('snap-back'); 
+            stick.style.transform = `translate(-50%, -50%)`; 
+            lastJoyX = 0; lastJoyY = 0;
+            updateTankLogic(0,0); 
+        }
+        function moveJoy(e) {
+            if(!dragging||isGyroEnabled)return; e.preventDefault();
+            const cx=e.touches?e.touches[0].clientX:e.clientX; const cy=e.touches?e.touches[0].clientY:e.clientY;
+            const dx=cx-joyCenter.x; const dy=cy-joyCenter.y;
+            const dist=Math.min(Math.hypot(dx,dy),maxDist); const angle=Math.atan2(dy,dx);
+            
+            if(dist<10) stick.classList.add('braking'); else stick.classList.remove('braking');
+            
+            const mx=Math.cos(angle)*dist; const my=Math.sin(angle)*dist;
+            stick.style.transform=`translate(-50%,-50%) translate(${mx}px,${my}px)`;
+            
+            const vx=Math.round((mx/maxDist)*100); const vy=Math.round((my/maxDist)*100)*-1;
+            lastJoyX = vx; lastJoyY = vy;
+            updateTankLogic(vx,vy);
+        }
+        
+        function updateTankLogic(vx, vy) {
+            vx = Math.round(vx * (tuning.turnSens / 100));
+
+            let vL = vy + vx; 
+            let vR = vy - vx;
+            
+            if (tuning.trim > 0) vR = vR * (1 - (tuning.trim / 100));
+            else if (tuning.trim < 0) vL = vL * (1 - (Math.abs(tuning.trim) / 100));
+            if (tuning.invertL) vL = -vL;
+            if (tuning.invertR) vR = -vR;
+            
+            vL = Math.max(-100, Math.min(100, vL));
+            vR = Math.max(-100, Math.min(100, vR));
+
+            vL = Math.round(vL * speedMultiplier);
+            vR = Math.round(vR * speedMultiplier);
+            
+            currentL = vL; currentR = vR;
+            motorLDisplay.innerText = currentL; 
+            motorRDisplay.innerText = currentR;
+            
+            let hex = "";
+            if (tuning.use4Motors) {
+                const raw = new Int8Array([currentL, currentR, currentL, currentR]);
+                const uintView = new Uint8Array(raw.buffer); 
+                for(let b of uintView) hex += b.toString(16).toUpperCase().padStart(2,'0') + " ";
+            } else {
+                const raw = new Int8Array([currentL, currentR, 0, 0]);
+                const uintView = new Uint8Array(raw.buffer); 
+                for(let b of uintView) hex += b.toString(16).toUpperCase().padStart(2,'0') + " ";
+            }
+            joyHex.innerText = hex;
+        }
+
+        base.addEventListener('mousedown', startJoy); base.addEventListener('touchstart', startJoy);
+        window.addEventListener('mouseup', endJoy); window.addEventListener('touchend', endJoy);
+        window.addEventListener('mousemove', moveJoy); window.addEventListener('touchmove', moveJoy, {passive:false});
+
+        const quadState = { m1:0, m2:0, m3:0, m4:0 };
+        
+        function initQuadJoystick(id) {
+            const base = document.getElementById(`joy${id}-base`);
+            const stick = document.getElementById(`joy${id}-stick`);
+            if(!base || !stick) return;
+            
+            const maxDist = 42; 
+            let activeTouchId = null;
+
+            function update(cx, cy) {
+                const rect = base.getBoundingClientRect();
+                const dy = cy - (rect.top + rect.height/2);
+                
+                let my = dy;
+                if(my > maxDist) my = maxDist;
+                if(my < -maxDist) my = -maxDist;
+                
+                stick.style.transform = `translate(-50%, -50%) translate(0px, ${my}px)`;
+                
+                let speed = Math.round((my/maxDist)*100) * -1; 
+                quadState[`m${id}`] = speed;
+            }
+
+            function reset() {
+                stick.classList.add('snap');
+                stick.style.transform = `translate(-50%, -50%)`;
+                quadState[`m${id}`] = 0;
+            }
+
+            base.addEventListener('mousedown', (e) => {
+                stick.classList.remove('snap'); update(e.clientX, e.clientY);
+                const mm = (ev) => update(ev.clientX, ev.clientY);
+                const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); reset(); };
+                window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+            });
+
+            base.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                stick.classList.remove('snap'); 
+                activeTouchId = e.changedTouches[0].identifier; 
+                update(e.changedTouches[0].clientX, e.changedTouches[0].clientY); 
+            });
+            base.addEventListener('touchmove', (e) => { 
+                e.preventDefault(); 
+                for(let i=0; i<e.changedTouches.length; i++) { 
+                    if(e.changedTouches[i].identifier === activeTouchId) { 
+                        update(e.changedTouches[i].clientX, e.changedTouches[i].clientY); 
+                        break; 
+                    } 
+                } 
+            });
+            base.addEventListener('touchend', (e) => { 
+                e.preventDefault(); 
+                for(let i=0; i<e.changedTouches.length; i++) { 
+                    if(e.changedTouches[i].identifier === activeTouchId) { 
+                        activeTouchId = null; 
+                        reset(); 
+                        break; 
+                    } 
+                } 
+            });
+        }
+
+        setTimeout(() => { 
+            initQuadJoystick(1); 
+            initQuadJoystick(2); 
+            initQuadJoystick(3); 
+            initQuadJoystick(4); 
+        }, 500);
+
+        setInterval(() => {
+            if(activeView === 'view-dual') {
+                const packet = new Int8Array([quadState.m1, quadState.m2, quadState.m3, quadState.m4]); 
+                let hexStr = "";
+                const uintView = new Uint8Array(packet.buffer);
+                for(let b of uintView) hexStr += b.toString(16).toUpperCase().padStart(2, '0') + " ";
+                document.getElementById('quadPacketHex').innerText = hexStr;
+                
+                if(isConnected) sendRawPacket(packet);
+            }
+        }, 100);
+
+        const CustomTheme = Blockly.Theme.defineTheme('myTheme', {
+            'base': Blockly.Themes.Classic,
+            'componentStyles': {
+                'workspaceBackgroundColour': '#0f172a', 'toolboxBackgroundColour': THEME_CONFIG.menuBg, 'toolboxForegroundColour': THEME_CONFIG.menuText, 'flyoutBackgroundColour': THEME_CONFIG.flyoutBg, 'flyoutForegroundColour': THEME_CONFIG.menuText, 'flyoutOpacity': THEME_CONFIG.flyoutOpacity, 'scrollbarColour': '#334155', 'insertionMarkerColour': '#fff', 'insertionMarkerOpacity': 0.3
+            }
+        });
+
+        var workspace = null;
+
+        // --- Neutral block: покази датчиків (не підключається ні до чого) ---
+// Додається в категорію "Контроль" як "sensor_display"
+if (window.Blockly) {
+    Blockly.Blocks = Blockly.Blocks || {};
+    Blockly.Blocks['sensor_display'] = {
+        init: function () {
+            this.appendDummyInput()
+                .appendField("Покази датчиків")
+                .appendField("  P1:")
+                .appendField("0", "P1")
+                .appendField("  P2:")
+                .appendField("0", "P2")
+                .appendField("  P3:")
+                .appendField("0", "P3")
+                .appendField("  P4:")
+                .appendField("0", "P4");
+
+            this.setColour(50);
+
+            // Ніяких з’єднань: блок не можна вставити у сценарій
+            // (за замовчуванням previous/next/output = немає)
+            this.setDeletable(true);
+            this.setMovable(true);
+            this.setTooltip("Показує поточні значення датчиків. Блок 'нейтральний' і не виконується.");
+        }
+    };
+
+    // No code generation
+    if (window.javascript && javascript.javascriptGenerator) {
+        javascript.javascriptGenerator.forBlock = javascript.javascriptGenerator.forBlock || {};
+        javascript.javascriptGenerator.forBlock['sensor_display'] = function () {
+            return '';
+        };
+    }
+}
+
+// Update values inside all 'sensor_display' blocks (легко і без лагів)
+function rcUpdateSensorDisplayBlocks() {
+    try {
+        if (!workspace || !window.Blockly) return;
+        const s = Array.isArray(window.sensorData) ? window.sensorData : [];
+        const blocks = workspace.getBlocksByType
+            ? workspace.getBlocksByType('sensor_display', false)
+            : (workspace.getAllBlocks(false) || []).filter(b => b && b.type === 'sensor_display');
+
+        for (const b of blocks) {
+            b.setFieldValue(String(s[0] ?? 0), 'P1');
+            b.setFieldValue(String(s[1] ?? 0), 'P2');
+            b.setFieldValue(String(s[2] ?? 0), 'P3');
+            b.setFieldValue(String(s[3] ?? 0), 'P4');
+        }
+    } catch (e) { /* ignore */ }
+}
+
+let _isMobile = null;
+
+
+        function lockFlyoutScale(ws) {
+            const flyout = ws && ws.getFlyout ? ws.getFlyout() : null;
+            const fw = flyout && flyout.getWorkspace ? flyout.getWorkspace() : null;
+            if (!fw) return;
+            // 1.0 = fixed block size in toolbox/flyout (won't change with workspace zoom)
+            if (Math.abs(fw.getScale() - 1) > 0.001) {
+                fw.setScale(1);
+                flyout.reflow();
+            }
+        }
+
+        function makeWorkspace(mobile) {
+            const dom = workspace ? Blockly.Xml.workspaceToDom(workspace) : null;
+            const prevScale = workspace ? workspace.getScale() : 0.75;
+
+            if (workspace) workspace.dispose();
+
+            document.body.classList.toggle('layout-mobile', mobile);
+            document.body.classList.toggle('layout-desktop', !mobile);
+
+            workspace = Blockly.inject('blocklyDiv', {
+                toolbox: document.getElementById('toolbox'),
+                theme: CustomTheme,
+                renderer: 'zelos',
+
+                // Mobile: toolbox at bottom (horizontal). Desktop: toolbox on the left (vertical).
+                horizontalLayout: mobile,
+                toolboxPosition: mobile ? 'end' : 'start',
+
+                grid: { spacing: 40, length: 2, colour: '#334155', snap: true },
+                zoom: { controls: false, wheel: true, startScale: prevScale, maxScale: (mobile ? prevScale : prevScale * 1.2), minScale: Math.max(0.25, prevScale * 0.5), scaleSpeed: 1.2, pinch: true },
+                trashcan: false,
+                move: { scrollbars: true, drag: true, wheel: false }
+            });
+
+            // Restore blocks
+            if (dom) Blockly.Xml.domToWorkspace(dom, workspace);
+
+            // Apply theme css tweaks (without forcing workspace scale)
+            const style = document.createElement('style');
+            style.innerHTML = `.blocklyToolboxDiv { background-color: ${THEME_CONFIG.menuBg} !important; }
+            .blocklyFlyoutBackground { fill: ${THEME_CONFIG.flyoutBg} !important; fill-opacity: ${THEME_CONFIG.flyoutOpacity} !important; }
+            .blocklyTreeLabel { color: ${THEME_CONFIG.menuText} !important; }
+            .blocklyTreeSelected .blocklyTreeRow { background-color: ${THEME_CONFIG.menuSelected} !important; }`;
+            document.head.appendChild(style);
+
+            // Lock toolbox/flyout block size
+            lockFlyoutScale(workspace);
+            workspace.addChangeListener((e) => {
+                if (e.type === Blockly.Events.VIEWPORT_CHANGE) lockFlyoutScale(workspace);
+            });
+
+            // Keep compatibility with existing code
+            window.workspace = workspace;
+
+            // Keep sensor display blocks updated (even if sensor packets are slow)
+            if (!window.__rcSensorDispTimer) {
+                window.__rcSensorDispTimer = setInterval(rcUpdateSensorDisplayBlocks, 200);
+            }
+        }
+
+        function applyResponsive() {
+            const mobile = window.innerWidth < 900;
+            if (_isMobile === mobile) return;
+            _isMobile = mobile;
+            makeWorkspace(mobile);
+        }
+
+        window.addEventListener('resize', () => {
+            clearTimeout(window.__rz);
+            window.__rz = setTimeout(applyResponsive, 150);
+        });
+
+        applyResponsive();
+
+function checkStop() {
+            return `if (typeof window._shouldStop !== 'undefined' && window._shouldStop) { throw "STOPPED"; }\n`;
+        }
+        
+        // === 🕷️ VALIDATION LOGIC ===
+// Дебаунс щоб не лагало під час перетягування блока
+let __rcValidateTimer = null;
+function scheduleValidateWorkspace() {
+    clearTimeout(__rcValidateTimer);
+    __rcValidateTimer = setTimeout(() => {
+        try { validateWorkspace(); } catch (e) { /* ignore */ }
+    }, 60);
+}
+
+workspace.addChangeListener(function(event) {
+    if (event.type === Blockly.Events.BLOCK_MOVE ||
+        event.type === Blockly.Events.BLOCK_CREATE ||
+        event.type === Blockly.Events.FINISHED_LOADING) {
+        scheduleValidateWorkspace();
+    }
+});
+
+function validateWorkspace() {
+    if (!workspace) return;
+    const allBlocks = workspace.getAllBlocks(false) || [];
+    const hasSpiderBlocks = allBlocks.some(b => b && typeof b.type === "string" && b.type.startsWith('spider_'));
+
+    for (const b of allBlocks) {
+        if (!b || typeof b.type !== "string") continue;
+
+        const isCarBlock = b.type.startsWith('robot_') || b.type === 'move_4_motors' || b.type === 'motor_single';
+        const root = (b.getSvgRoot && b.getSvgRoot()) || null;
+
+        if (hasSpiderBlocks && isCarBlock) {
+            if (root) root.classList.add('blockly-error-glow');
+            b.setWarningText("⚠️ НЕСУМІСНІСТЬ: Не можна змішувати блоки Павука та Машинки!");
+        } else {
+            if (root) root.classList.remove('blockly-error-glow');
+            b.setWarningText(null);
+        }
+    }
+}
+
+// --- HELPERS FROM ORIGINAL ---
+
+        let moveHistory = [];
+        let isCodeRunning = false;
+        window._shouldStop = false;
+        window._trackMemory = [];
+        window._isRecordingTrack = false;
+        window.lastJoyX = 0; window.lastJoyY = 0;
+
+        function recordMove(m1, m2, m3, m4) { if(isCodeRunning) moveHistory.push({ type: 'move', m1: parseInt(m1), m2: parseInt(m2), m3: parseInt(m3), m4: parseInt(m4) }); }
+        function recordWait(sec) { if(isCodeRunning) moveHistory.push({ type: 'wait', sec: parseFloat(sec) }); }
+
+        async function goHomeSequence() {
+            for (let i = moveHistory.length - 1; i >= 0; i--) {
+                if(window._shouldStop) return;
+                const action = moveHistory[i];
+                if (action.type === 'wait') await new Promise(r => setTimeout(r, action.sec * 1000));
+                else if (action.type === 'move') await sendDrivePacket(-action.m1, -action.m2, -action.m3, -action.m4);
+            }
+            await sendDrivePacket(0, 0, 0, 0); moveHistory = [];
+        }
+
+        var _pidIntegral = 0;
+        var _pidLastError = 0;
+        window.calculatePID = function(error, kp, ki, kd) {
+            var p = error * kp;
+            _pidIntegral += error;
+            var i = _pidIntegral * ki;
+            var d = (error - _pidLastError) * kd;
+            _pidLastError = error;
+            return p + i + d;
+        };
+
+        window.blockStates = {}; 
+        window.checkRisingEdge = function(id, currentVal) {
+            let boolVal = currentVal === true || (typeof currentVal === 'number' && currentVal > 0);
+            let lastVal = window.blockStates[id] || false;
+            window.blockStates[id] = boolVal; 
+            return boolVal && !lastVal; 
+        };
+        window.schmittTrigger = function(id, val, low, high) {
+            let state = window.blockStates[id] || false; 
+            if (val >= high) state = true;
+            else if (val <= low) state = false;
+            window.blockStates[id] = state;
+            return state;
+        };
+        window.smoothValue = function(id, val, size) {
+            let buffer = window.blockStates[id] || [];
+            if(!Array.isArray(buffer)) buffer = [];
+            buffer.push(val);
+            if (buffer.length > size) buffer.shift(); 
+            window.blockStates[id] = buffer;
+            let sum = buffer.reduce((a, b) => a + b, 0);
+            return sum / buffer.length;
+        };
+
+        window.toggleRunState = function() { if(isCodeRunning) stopCode(); else runCode(); };
+        window.runCode = async function() {
+            if(!isConnected) { alert("Спочатку підключіться до Bluetooth!"); return; }
+            isCodeRunning = true; window._shouldStop = false; moveHistory = []; window._trackMemory = []; _pidIntegral = 0; _pidLastError = 0; window.blockStates = {}; 
+            const btn = document.getElementById('globalRunBtn'); const icon = document.getElementById('runIcon');
+            btn.classList.add('running'); icon.classList.remove('fa-play'); icon.classList.add('fa-stop');
+            log("Program Started");
+            javascript.javascriptGenerator.STATEMENT_PREFIX = 'if (window._shouldStop) throw "STOPPED";\n';
+            let code = "var _startTime = new Date().getTime(); var _blocklySpeedMultiplier = 1.0; var x; " + javascript.javascriptGenerator.workspaceToCode(workspace);
+            try { const runner = new Function(`return (async () => { ${code} })();`); await runner(); } catch(e) { if (e === "STOPPED") { log("Program Stopped", "warn"); } else { console.error(e); log("Error: " + e, "error"); } } finally { stopCode(); }
+        };
+        window.stopCode = function() { 
+            window._shouldStop = true; isCodeRunning = false; window._isRecordingTrack = false;
+            sendDrivePacket(0,0,0,0);
+            sendSpiderPacket(90,90,90,90,90,90,90,90);
+            const btn = document.getElementById('globalRunBtn'); const icon = document.getElementById('runIcon');
+            btn.classList.remove('running'); icon.classList.remove('fa-stop'); icon.classList.add('fa-play');
+        };
+
+        function loadExample(type) {
+             // ... logic kept ...
+             if(type === 'spider_demo') {
+                 workspace.clear();
+                 Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom('<xml xmlns="https://developers.google.com/blockly/xml"><block type="spider_center" x="50" y="50"><next><block type="spider_config"><value name="HEIGHT"><shadow type="math_number"><field name="NUM">40</field></shadow></value><value name="SPEED"><shadow type="math_number"><field name="NUM">80</field></shadow></value><next><block type="spider_anim"><field name="ANIM">WAVE</field><next><block type="spider_walk_time"><field name="DIR">FWD</field><value name="SEC"><shadow type="math_number"><field name="NUM">3</field></shadow></value><next><block type="spider_anim"><field name="ANIM">SIT</field></block></next></block></next></block></next></block></next></block>'), workspace);
+                 document.getElementById('exampleModal').classList.add('hidden');
+             } else {
+                 const xmlAutopilot = '<xml xmlns="https://developers.google.com/blockly/xml"><block type="start_hat" id="start" x="50" y="50"><next><block type="controls_whileUntil" id="loop"><field name="MODE">WHILE</field><value name="BOOL"><block type="logic_boolean"><field name="BOOL">TRUE</field></block></value><statement name="DO"><block type="controls_if"><mutation else="1"></mutation><value name="IF0"><block type="wait_until_sensor"><field name="SENS">0</field><field name="OP">LT</field><value name="VAL"><shadow type="math_number"><field name="NUM">25</field></shadow></value></block></value><statement name="DO0"><block type="robot_stop"><next><block type="robot_turn_timed"><field name="DIR">RIGHT</field><value name="SEC"><shadow type="math_number"><field name="NUM">0.5</field></shadow></value></block></next></block></statement><statement name="ELSE"><block type="robot_move"><value name="L"><shadow type="math_number"><field name="NUM">80</field></shadow></value><value name="R"><shadow type="math_number"><field name="NUM">80</field></shadow></value></block></statement></block></statement></block></next></block></xml>';
+                 const xmlSquare = '<xml xmlns="https://developers.google.com/blockly/xml"><block type="start_hat" id="start" x="50" y="50"><next><block type="controls_repeat_ext"><value name="TIMES"><shadow type="math_number"><field name="NUM">4</field></shadow></value><statement name="DO"><block type="robot_move"><value name="L"><shadow type="math_number"><field name="NUM">100</field></shadow></value><value name="R"><shadow type="math_number"><field name="NUM">100</field></shadow></value><next><block type="wait_seconds"><value name="SECONDS"><shadow type="math_number"><field name="NUM">1</field></shadow></value><next><block type="robot_turn_timed"><field name="DIR">RIGHT</field><value name="SEC"><shadow type="math_number"><field name="NUM">0.6</field></shadow></value></block></next></block></next></block></statement><next><block type="robot_stop"></block></next></block></next></block></xml>';
+                 const xmlLine = '<xml xmlns="https://developers.google.com/blockly/xml"><block type="start_hat" x="50" y="50"><next><block type="controls_whileUntil"><field name="MODE">WHILE</field><value name="BOOL"><block type="logic_boolean"><field name="BOOL">TRUE</field></block></value><statement name="DO"><block type="controls_if"><mutation else="1"></mutation><value name="IF0"><block type="logic_compare"><field name="OP">LT</field><value name="A"><block type="sensor_get"><field name="TYPE">LIGHT</field><field name="SENS">1</field></block></value><value name="B"><block type="math_number"><field name="NUM">50</field></block></value></block></value><statement name="DO0"><block type="robot_move"><value name="L"><shadow type="math_number"><field name="NUM">30</field></shadow></value><value name="R"><shadow type="math_number"><field name="NUM">80</field></shadow></value></block></statement><statement name="ELSE"><block type="robot_move"><value name="L"><shadow type="math_number"><field name="NUM">80</field></shadow></value><value name="R"><shadow type="math_number"><field name="NUM">30</field></shadow></value></block></statement></block></statement></block></next></block></xml>';
+                 if(type === 'autopilot') { workspace.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xmlAutopilot), workspace); }
+                 if(type === 'square') { workspace.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xmlSquare), workspace); }
+                 if(type === 'line_follow') { workspace.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xmlLine), workspace); }
+                 document.getElementById('exampleModal').classList.add('hidden');
+             }
+        }
+
+        function newProject() { if(confirm("Створити новий проект?")) { workspace.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom('<xml><block type="start_hat" x="50" y="50"></block></xml>'), workspace); document.getElementById('exampleModal').classList.add('hidden'); } }
+        function saveMyFile() {
+            try {
+                const xml = Blockly.utils.xml.domToText(Blockly.Xml.workspaceToDom(workspace));
+                const defaultName = "robot_code_" + new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-") + ".xml";
+                const promptFn = (window.Blockly && Blockly.dialog && Blockly.dialog.prompt) ? Blockly.dialog.prompt : null;
+
+                const doSave = (raw) => {
+                    if (raw === null || typeof raw === "undefined") return;
+                    let name = String(raw).trim();
+                    if (!name) return;
+
+                    // sanitize filename
+                    name = name.replace(/[\/:*?"<>|]/g, "_");
+                    if (!name.toLowerCase().endsWith(".xml")) name += ".xml";
+
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob([xml], { type: "text/xml" }));
+                    a.download = name;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+                };
+
+                if (promptFn) promptFn("Назва файлу", defaultName, doSave);
+                else doSave(window.prompt("Назва файлу", defaultName));
+            } catch (e) {
+                alert("Не вдалося зберегти: " + e);
+            }
+        }
+        function loadMyFile(input, isAppend) { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { if(!isAppend) workspace.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(e.target.result), workspace); document.getElementById('exampleModal').classList.add('hidden'); }; r.readAsText(f); input.value = ''; }
+        
+        Blockly.dialog.setPrompt(function(message, defaultValue, callback) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm';
+            const modal = document.createElement('div');
+            modal.className = 'bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 p-6 shadow-2xl';
+            const title = document.createElement('h3');
+            title.className = 'text-lg font-bold text-white mb-4 text-center'; title.innerText = message;
+            const input = document.createElement('input');
+            input.type = 'text'; input.className = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none mb-4'; input.value = defaultValue;
+            const btnContainer = document.createElement('div'); btnContainer.className = 'grid grid-cols-2 gap-3';
+            const cancelBtn = document.createElement('button'); cancelBtn.className = 'py-2 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold'; cancelBtn.innerText = 'Скасувати';
+            cancelBtn.onclick = () => { document.body.removeChild(overlay); callback(null); };
+            const okBtn = document.createElement('button'); okBtn.className = 'py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-500 font-bold'; okBtn.innerText = 'OK';
+            okBtn.onclick = () => { document.body.removeChild(overlay); callback(input.value); };
+            btnContainer.appendChild(cancelBtn); btnContainer.appendChild(okBtn); modal.appendChild(title); modal.appendChild(input); modal.appendChild(btnContainer); overlay.appendChild(modal); document.body.appendChild(overlay); input.focus();
+        });
+        
+        setTimeout(() => { if (workspace) { workspace.createVariable('x'); } }, 1000);
+        window.sendDrivePacket = sendDrivePacket;
+    </script>
+     <script src="blocks_car_fixed3.js"></script>
+    <script src="blocks_spider.js"></script>
+  <script src="help.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- small helpers ----------
+  const nowMs = () => (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const fmtTime = () => new Date().toLocaleTimeString().split(" ")[0];
+  const safeName = (s) => String(s ?? "").trim().replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim();
+
+  // ---------- 1) Safety Watchdog STOP ----------
+  const RCWatchdog = {
+    enabled: true,
+    timeoutMs: 1200,
+    tickMs: 400,
+    lastCmdAt: 0,
+    lastStopAt: 0,
+    bump(){
+      this.lastCmdAt = nowMs();
+    },
+    stopNow(reason){
+      try{
+        // Avoid spamming STOP too often
+        const t = nowMs();
+        if (t - this.lastStopAt < 350) return;
+        this.lastStopAt = t;
+
+        if (typeof window.sendDrivePacket === "function") window.sendDrivePacket(0,0,0,0);
+        if (typeof window.sendSpiderPacket === "function") window.sendSpiderPacket(90,90,90,90,90,90,90,90);
+        if (typeof window.log === "function") window.log("SAFETY STOP" + (reason ? (": " + reason) : ""), "err");
+      } catch(e){}
+    },
+    start(){
+      if (this._timer) return;
+      this._timer = setInterval(() => {
+        if (!this.enabled) return;
+
+        // Only enforce when connected OR simulating
+        const activeLink = !!window.isConnected || !!window.isSimulating;
+
+        if (!activeLink) return;
+
+        // Enforce when code is running or motors are non-zero
+        const motors = window.motorState || {m1:0,m2:0,m3:0,m4:0};
+        const motorsActive = (motors.m1||0)!==0 || (motors.m2||0)!==0 || (motors.m3||0)!==0 || (motors.m4||0)!==0;
+        const running = !!window.isCodeRunning;
+
+        if (!(running || motorsActive)) return;
+
+        const t = nowMs();
+        if (!this.lastCmdAt) { this.lastCmdAt = t; return; }
+        if (t - this.lastCmdAt > this.timeoutMs) {
+          this.stopNow("no commands");
+        }
+      }, this.tickMs);
+
+      // Stop when tab hidden / leaving
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) this.stopNow("tab hidden");
+      });
+
+      window.addEventListener("pagehide", () => this.stopNow("page hide"));
+      window.addEventListener("beforeunload", () => this.stopNow("leave"));
+    }
+  };
+
+  // ---------- 6) Telemetry (buffer + CSV export) ----------
+  const RCTelemetry = {
+    enabled: true,
+    maxRows: 6000,
+    rows: [],
+    push(row){
+      if (!this.enabled) return;
+      this.rows.push(row);
+      if (this.rows.length > this.maxRows) this.rows.splice(0, this.rows.length - this.maxRows);
+    },
+    exportCSV(){
+      const rows = this.rows.slice();
+      const header = ["time","ms","kind","m1","m2","m3","m4","s1","s2","s3","s4","mode"].join(",");
+      const lines = [header];
+      for (const r of rows){
+        const line = [
+          JSON.stringify(r.time ?? ""),
+          String(Math.round(r.ms ?? 0)),
+          JSON.stringify(r.kind ?? ""),
+          String(r.m1 ?? ""),
+          String(r.m2 ?? ""),
+          String(r.m3 ?? ""),
+          String(r.m4 ?? ""),
+          String(r.s1 ?? ""),
+          String(r.s2 ?? ""),
+          String(r.s3 ?? ""),
+          String(r.s4 ?? ""),
+          JSON.stringify(r.mode ?? "")
+        ].join(",");
+        lines.push(line);
+      }
+      const csv = lines.join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+      a.download = "telemetry_" + new Date().toISOString().replace(/[:.]/g,"-") + ".csv";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+  };
+function ensureLogExportButton(){
+    if (document.getElementById("rcExportCSVBtn")) return;
+    const modal = document.getElementById("logModal");
+    if (!modal) return;
+
+    // Prefer centered slot in header (for nice layout on mobile)
+    const centerSlot = modal.querySelector("#rcLogHeaderCenter");
+    const btnBar = centerSlot || modal.querySelector(".flex.items-center.justify-between") || modal.querySelector(".flex.items-center") || modal;
+
+    const btn = document.createElement("button");
+    btn.id = "rcExportCSVBtn";
+    btn.className = "px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-black text-slate-100 text-xs whitespace-nowrap";
+    btn.textContent = "Експорт CSV";
+    btn.addEventListener("click", () => RCTelemetry.exportCSV());
+
+    btnBar.appendChild(btn);
+}
+
+  // Boot (few retries, no infinite loops)
+  let tries = 0;
+  (function boot(){
+    tries++;
+    try{ patchOnce(); }catch(e){}
+    if (tries < 20) setTimeout(boot, Math.min(700, 60 + tries*40));
+  })();
+
+})();
+</script>
+
+  <!-- 3D (for RC simulator overlay) -->
+  <script src="https://unpkg.com/three@0.155.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.155.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.155.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="rc_sim2d_3d_overlay.js"></script>
+
+  <script src="stm32_cgen.js"></script>
+  <script src="rc_sim2d.js"></script>
+
+  <script src="customblock.js"></script>
+</body>
+</html>
