@@ -6542,24 +6542,28 @@ setDrive
       bot.wa = lerp(bot.wa, w, clamp(dt*5.0,0,1));
 
       // Position update
-// === ГІБРИДНА ФІЗИКА ===
-if (window.isOnline) {
-    // ОНЛАЙН: Беремо координати з сервера
-    bot.x = window.serverBotData.x;
-    bot.y = window.serverBotData.y;
-    bot.a = window.serverBotData.a;
-
-    // Відправляємо інпут на сервер
-    if (window.serverWs && window.serverWs.readyState === 1) {
-        // Відправляємо поточні l/r (швидкість моторів)
-        window.serverWs.send(JSON.stringify({ t: "input", l: bot.l, r: bot.r }));
-    }
-} else {
-    // ОФЛАЙН: Стара фізика (не чіпаємо)
-    bot.x += bot.vx * dt;
-    bot.y += bot.vy * dt;
-    bot.a += bot.wa * dt;
-}
+// === ГІБРИДНА ФІЗИКА (ПЛАВНА) ===
+      if (window.isOnline && window.serverBotData) {
+          // 1. Плавний рух (щоб не лагало)
+          const t = 0.5; 
+          bot.x = bot.x + (window.serverBotData.x - bot.x) * t;
+          bot.y = bot.y + (window.serverBotData.y - bot.y) * t;
+          bot.a = window.serverBotData.a; 
+          
+          // 2. Відправка команд на сервер
+          if (window.serverWs && window.serverWs.readyState === 1) {
+             window.serverWs.send(JSON.stringify({ 
+                 t: "input", 
+                 l: bot.l || 0, 
+                 r: bot.r || 0 
+             }));
+          }
+      } else {
+          // ОФЛАЙН (якщо інтернету немає)
+          bot.x += bot.vx * dt;
+          bot.y += bot.vy * dt;
+          bot.a += bot.wa * dt;
+      }
       // Wheels rotation for visuals
       bot.wheelRotL += targVL * dt * 0.03;
       bot.wheelRotR += targVR * dt * 0.03;
