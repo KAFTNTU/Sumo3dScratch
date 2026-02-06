@@ -7280,23 +7280,103 @@ if (window.isOnline) {
     configureSensors: (cfg)=> Sim.setSensorsConfig(cfg),
     _sim: Sim,
   };
-// === КНОПКА ЗАПУСКУ ===
-setTimeout(() => {
+// === КНОПКА ЗАПУСКУ (ВСТАВИТИ В ТОП-БАР SCRATCH) ===
+(function mountOnlineButtonInTopBar(){
+  function createBtn(){
     const btn = document.createElement("button");
+    btn.type = "button";
     btn.innerText = "🔴 GO ONLINE";
-    btn.style = "position:fixed; top:10px; right:10px; z-index:99999; padding:15px; background:red; color:white; font-weight:bold; border:2px solid white; cursor:pointer;";
-    btn.onclick = function() {
-        if (!window.isOnline) {
-            window.connectToSumo();
-            btn.style.background = "green";
-            btn.innerText = "🟢 ONLINE";
-        } else {
-            if(window.serverWs) window.serverWs.close();
-            btn.style.background = "red";
-            btn.innerText = "🔴 GO ONLINE";
-        }
-    };
-    document.body.appendChild(btn);
-}, 1000);
+    btn.style.cssText = `
+      margin-left:10px;
+      padding:10px 14px;
+      border-radius:14px;
+      background:red;
+      color:white;
+      font-weight:800;
+      border:2px solid rgba(255,255,255,0.55);
+      cursor:pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      white-space:nowrap;
+    `;
 
+    function setState(){
+      if (window.isOnline) {
+        btn.style.background = "green";
+        btn.innerText = "🟢 ONLINE";
+      } else {
+        btn.style.background = "red";
+        btn.innerText = "🔴 GO ONLINE";
+      }
+    }
+
+    btn.onclick = function(){
+      if (!window.isOnline) {
+        window.connectToSumo();
+        // стан оновиться по onopen, але поставимо одразу “приблизно”
+        btn.style.background = "orange";
+        btn.innerText = "🟠 CONNECTING...";
+      } else {
+        if (window.serverWs) window.serverWs.close();
+        setState();
+      }
+    };
+
+    // підстрахуємось: якщо ззовні закриється сокет — кнопка повернеться в OFFLINE
+    const _oldClose = window.connectToSumo;
+    // не чіпаємо connectToSumo, просто слухаємо статус через таймер
+    setInterval(setState, 500);
+
+    return btn;
+  }
+
+  function findTopBarRightSide(){
+    // 1) найпростіше: знайти контейнер з кнопкою "Назад"
+    const els = Array.from(document.querySelectorAll("button, a, div, span"));
+    const back = els.find(el => (el.innerText || "").trim() === "Назад");
+    if (back && back.parentElement) return back.parentElement;
+
+    // 2) fallback: знайти контейнер з багатьма кнопками (іконки зверху справа)
+    const btns = Array.from(document.querySelectorAll("button"));
+    // беремо батька, в якому є багато кнопок підряд
+    for (const b of btns) {
+      const p = b.parentElement;
+      if (!p) continue;
+      const count = p.querySelectorAll("button").length;
+      if (count >= 5) return p;
+    }
+    return null;
+  }
+
+  function tryMount(){
+    // якщо вже додали — нічого не робимо
+    if (document.getElementById("goOnlineBtn")) return true;
+
+    const host = findTopBarRightSide();
+    if (!host) return false;
+
+    const btn = createBtn();
+    btn.id = "goOnlineBtn";
+
+    // вставимо зліва від "Назад", якщо є
+    const children = Array.from(host.children);
+    const backEl = children.find(el => (el.innerText || "").trim() === "Назад");
+    if (backEl) backEl.insertAdjacentElement("beforebegin", btn);
+    else host.appendChild(btn);
+
+    return true;
+  }
+
+  // UI може домальовуватись — тому пробуємо кілька разів
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    if (tryMount() || tries > 60) clearInterval(t);
+  }, 250);
+
+  // і додатково: якщо перерендер зносить кнопку — MutationObserver її поверне
+  const mo = new MutationObserver(() => {
+    if (!document.getElementById("goOnlineBtn")) tryMount();
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
 })();
+
