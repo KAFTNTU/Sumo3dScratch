@@ -5978,6 +5978,8 @@ toggleRunStop(){
 
 
     stopProgram(){
+      try{ if (window.RC && window.RC===window.__RCSIM_LAST_RC) delete window.RC; }catch(e){}
+
       this.paused = false;      // Stop the running async program WITHOUT resetting the bot pose.
       this.stopFlag = true;
       window._shouldStop = true;
@@ -6095,6 +6097,8 @@ ${code}
       };
       try{
         window.__RCSIM_LAST_RC = RC;
+        try{ window.RC = RC; }catch(e){}
+
         await fn(RC);
       }catch(err){
         if (err && String(err.message||err) === 'RC_STOP'){
@@ -6240,6 +6244,9 @@ ${code}
       this.online.startPending = (this.online.phase==='countdown');
       this.online.startPendingUntil = 0;
       if (d.bots){ this.applyOnlineState(d.bots); }
+      // Auto-run local program in online mode
+      try{ if (!this.running) this.startProgram(); }catch(e){}
+
     }
     if (d.t==='countdown'){
       // Server-driven countdown (no control messages)
@@ -6275,6 +6282,9 @@ ${code}
     if (d.t==='state'){
       if (typeof d.phase==='string'){ this.online.phase = d.phase; this.online.fightStarted = (d.phase==='fight'); this.online.startPending = (d.phase==='countdown'); if (this.online.startPending && typeof d.msLeft==='number') this.online.startPendingUntil = Date.now()+Math.max(0,d.msLeft); }
       if (d.bots){ this.applyOnlineState(d.bots); }
+      // Auto-run local program in online mode
+      try{ if (!this.running) this.startProgram(); }catch(e){}
+
       this.sumoWinner = d.winner ? (d.winner===this.online.pid?'you':'opponent') : null;
     }
   }catch(e){}
