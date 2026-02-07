@@ -85,23 +85,55 @@
   // ------------------------------------------------------------
   // Optional: auto-load rc_sim2d.js (2D simulator tab, separate file)
   // ------------------------------------------------------------
-  (function loadRcSim2d(){
-    try{
-      if (window.RCSim2D) return;
-      const existing = Array.from(document.scripts || []).some(s => (s.src || '').endsWith('/rc_sim2d.js') || (s.src || '').endsWith('rc_sim2d.js'));
-      if (existing) return;
-      const s = document.createElement('script');
-      s.src = 'rc_sim2d.js';
-      s.async = true;
-      s.onload = ()=>{ try{ console.log('[RC_CUSTOMBLOCK] rc_sim2d.js loaded'); }catch(e){} };
-      s.onerror = ()=>{ try{ console.warn('[RC_CUSTOMBLOCK] rc_sim2d.js not found (optional)'); }catch(e){} };
-      document.head.appendChild(s);
-    }catch(e){}
-  })();
-
-
-
   // ------------------------------------------------------------
+// Optional: auto-load 2D simulator (split files)
+// Loads in order:
+//   1) rc_sim2d_online.js
+//   2) rc_sim2d_core.js
+//   3) rc_sim2d_3d_overlay.js
+// ------------------------------------------------------------
+(function loadRcSim2d(){
+  try{
+    if (window.RCSim2D) return;
+
+    const needed = ['rc_sim2d_online.js','rc_sim2d_core.js','rc_sim2d_3d_overlay.js'];
+
+    function hasScript(srcEnd){
+      try{
+        return Array.from(document.scripts || []).some(s => {
+          const u = (s.src || '');
+          return u.endsWith('/'+srcEnd) || u.endsWith(srcEnd);
+        });
+      }catch(e){ return false; }
+    }
+
+    function loadOne(name){
+      return new Promise((resolve, reject)=>{
+        if (hasScript(name)) return resolve();
+        const s = document.createElement('script');
+        s.src = name;
+        s.async = false; // keep order
+        s.onload = ()=> resolve();
+        s.onerror = ()=> reject(new Error(name+' not found'));
+        document.head.appendChild(s);
+      });
+    }
+
+    // Load sequentially (order matters: online BEFORE core)
+    (async ()=>{
+      for (const f of needed){
+        try{
+          await loadOne(f);
+          try{ console.log('[RC_CUSTOMBLOCK] '+f+' loaded'); }catch(e){}
+        }catch(err){
+          try{ console.warn('[RC_CUSTOMBLOCK] '+String(err.message||err)); }catch(e){}
+        }
+      }
+    })();
+  }catch(e){}
+})();
+
+// ------------------------------------------------------------
   // Desktop detect (PC only)
   // ------------------------------------------------------------
   function isDesktop(){
