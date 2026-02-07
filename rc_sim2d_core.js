@@ -6052,14 +6052,32 @@ ${code}
     },
 
     sendDrive(l,r){
-      // If online mode is active, send to server; otherwise apply locally.
-      if (this.online && this.online.ws && this.online.ws.readyState===1){
-        const msg = { t:'input', pid: this.online.pid || 'p1', l:Number(l)||0, r:Number(r)||0 };
-        try { this.online.ws.send(JSON.stringify(msg)); } catch(e){}
-        // also keep local command for UI
-        this.lastCmd = `L${Math.round(msg.l)} R${Math.round(msg.r)}`;
+      // ВИПРАВЛЕНО: Використовуємо НОВИЙ онлайн модуль (rc_sim2d_online.js)
+      // Якщо онлайн через window.serverWs - відправляємо туди
+      if (window.isOnline && window.serverWs && window.serverWs.readyState === WebSocket.OPEN){
+        try {
+          window.serverWs.send(JSON.stringify({
+            t: 'input',
+            l: Number(l) || 0,
+            r: Number(r) || 0
+          }));
+        } catch(e){
+          console.error('Failed to send input to new WebSocket:', e);
+        }
+        // ВАЖЛИВО: також встановити локально для UI
+        this.setDrive(l, r);
         return;
       }
+      
+      // Старий вбудований онлайн (закоментовано, бо конфліктує)
+      // if (this.online && this.online.ws && this.online.ws.readyState===1){
+      //   const msg = { t:'input', pid: this.online.pid || 'p1', l:Number(l)||0, r:Number(r)||0 };
+      //   try { this.online.ws.send(JSON.stringify(msg)); } catch(e){}
+      //   this.lastCmd = `L${Math.round(msg.l)} R${Math.round(msg.r)}`;
+      //   return;
+      // }
+      
+      // Офлайн режим
       this.setDrive(l,r);
     },
 
@@ -6250,9 +6268,14 @@ ${code}
 
 
     isOnlineSumoConnected(){
-      try{
-        return !!(this.track && this.track.kind==='sumo' && this.online && this.online.ws && this.online.ws.readyState===1);
-      }catch(e){ return false; }
+      // ВИМКНЕНО - використовуємо новий онлайн модуль (rc_sim2d_online.js)
+      // Старий вбудований WebSocket конфліктував з новим
+      return false;
+      
+      // Старий код (закоментовано):
+      // try{
+      //   return !!(this.track && this.track.kind==='sumo' && this.online && this.online.ws && this.online.ws.readyState===1);
+      // }catch(e){ return false; }
     },
 
     sendControl(op){
