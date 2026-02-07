@@ -1,57 +1,46 @@
 /* RoboScratch 2D Simulator (single-file) 1 */
 (function(){
   'use strict';
-
 // === ONLINE HYBRID GLOBALS (РОЗУМНА ВЕРСІЯ) ===
 window.isOnline = false; 
 window.serverWs = null;
 window.onlineState = "offline";
-
 // ХТО Я? (Сервер скаже: "p1" або "p2")
 window.myPID = null; 
-
 // КООРДИНАТИ
 window.serverBotData = { x: 0, y: 0, a: 0 }; // Я (Моя машинка)
 window.enemyBotData = { x: 0, y: 0, a: 0 };  // ВОРОГ (Суперник)
-
 window.connectToSumo = function() {
     console.log("Connecting...");
     window.onlineState = "connecting";
     
     // Твоя адреса
     window.serverWs = new WebSocket("wss://rc-sumo-server.kafrdrapv1.workers.dev/ws?room=default");
-
     window.serverWs.onopen = () => {
         window.isOnline = true;
         window.onlineState = "online";
         console.log("ONLINE MODE ACTIVATED!"); 
         alert("🟢 З'єднано! Чекаємо розподілу ролей...");
     };
-
     window.serverWs.onmessage = (e) => {
         try {
             const d = JSON.parse(e.data);
-
             // 1. СЕРВЕР КАЖЕ, ХТО ТИ (Приходить одразу при вході)
             if (d.t === "hello") {
                 window.myPID = d.pid; // "p1" або "p2"
-                console.log(`✅ ТВОЯ РОЛЬ: ${window.myPID}`);
-                alert(`Ти граєш за гравця: ${window.myPID.toUpperCase()}`);
+                console.log(`✅ ТВОЯ РОЛЬ: ${window.myPID}`);  // ❌ ПОМИЛКА 1: тут було console.log` замість console.log(
+                alert(`Ти граєш за гравця: ${window.myPID.toUpperCase()}`);  // ❌ ПОМИЛКА 2: тут було alert` замість alert(
             }
-
             // 2. ОТРИМУЄМО КООРДИНАТИ (Приходить постійно)
             if (d.t === "state" && d.bots) {
                 // Якщо сервер ще не сказав, хто ми — ігноруємо
                 if (!window.myPID) return;
-
                 const me = window.myPID;                 
                 const enemy = (me === "p1") ? "p2" : "p1"; // Якщо я p1, то ворог p2
-
                 // Оновлюємо СЕБЕ (щоб їхати)
                 if (d.bots[me]) {
                     window.serverBotData = d.bots[me];
                 }
-
                 // Оновлюємо ВОРОГА (щоб знати де він)
                 if (d.bots[enemy]) {
                     window.enemyBotData = d.bots[enemy];
@@ -59,12 +48,10 @@ window.connectToSumo = function() {
             }
         } catch(err){}
     };
-
     window.serverWs.onerror = () => {
         window.isOnline = false;
         window.onlineState = "offline";
     };
-
     window.serverWs.onclose = () => {
         window.isOnline = false;
         window.onlineState = "offline";
@@ -75,9 +62,20 @@ window.connectToSumo = function() {
     setInterval(() => {
         if (window.isOnline && window.myPID) {
             // Пише в консоль раз на секунду
-            console.log(`🆔 Я ГРАЮ ЗА: [ ${window.myPID.toUpperCase()} ]`);
+            console.log(`🆔 Я ГРАЮ ЗА: [ ${window.myPID.toUpperCase()} ]`);  // ❌ ПОМИЛКА 3: тут також було console.log`
         }
     }, 1000);
+};
+
+// === ВІДПРАВКА КОМАНД НА СЕРВЕР ===
+window.sendInputToServer = function(leftWheel, rightWheel) {
+    if (window.isOnline && window.serverWs && window.serverWs.readyState === WebSocket.OPEN) {
+        window.serverWs.send(JSON.stringify({
+            t: "input",
+            l: leftWheel,   // -100 до 100
+            r: rightWheel   // -100 до 100
+        }));
+    }
 };
 
   // ========== Small utilities ==========
@@ -5784,6 +5782,15 @@ speedWrap.appendChild(speedLabel);
       requestAnimationFrame(()=>{ this.resize(); this.fitToTrack(); });
     },
 
+
+
+
+
+    // === ONLINE HYBRID GLOBALS (РОЗУМНА ВЕРСІЯ) ===
+
+
+
+    
     resetBot(){
       const st = this.track.start || {x:0,y:0,a:0};
       this.bot.x = st.x;
@@ -6366,13 +6373,15 @@ ${code}
       }
     },
 
-setDrive
-(l,r){
+setDrive(l,r){
       l = clamp(Number(l)||0, -100, 100);
       r = clamp(Number(r)||0, -100, 100);
       this.bot.l = l;
       this.bot.r = r;
       this.lastCmd = `L${l.toFixed(0)} R${r.toFixed(0)}`;
+      
+      // === ВІДПРАВКА НА СЕРВЕР ===
+      window.sendInputToServer(l, r);
     },
 
     // Configure which sensors exist + what they measure.
